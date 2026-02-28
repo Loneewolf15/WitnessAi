@@ -73,7 +73,7 @@ class Detector:
         now = datetime.utcnow()
         objects: list[DetectedObject] = []
 
-        results = self._model(frame)
+        results = self._model(frame, imgsz=320, verbose=False)
 
         for result in results:
             for box in result.boxes:
