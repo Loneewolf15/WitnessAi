@@ -26,23 +26,25 @@ class MockLLM:
 
 
 class GeminiLLM:
-    """Google Gemini API wrapper."""
+    """Google Gemini API wrapper (uses google-genai SDK)."""
 
-    def __init__(self, api_key: str, model: str = "gemini-pro"):
+    def __init__(self, api_key: str, model: str = "gemini-2.0-flash"):
         self.api_key = api_key
         self.model = model
         self._client = None
 
     def _get_client(self):
         if self._client is None:
-            import google.generativeai as genai
-            genai.configure(api_key=self.api_key)
-            self._client = genai.GenerativeModel(self.model)
+            from google import genai
+            self._client = genai.Client(api_key=self.api_key)
         return self._client
 
     def generate(self, prompt: str) -> str:
         client = self._get_client()
-        response = client.generate_content(prompt)
+        response = client.models.generate_content(
+            model=self.model,
+            contents=prompt,
+        )
         return response.text.strip()
 
 
