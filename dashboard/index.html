@@ -1195,6 +1195,20 @@
         console.log("[WitnessAI] CAM_WS_URL:", CAM_WS_URL);
 
         try {
+          // Check permission state first
+          console.log("[WitnessAI] Checking camera permission...");
+          try {
+            const permStatus = await navigator.permissions.query({ name: 'camera' });
+            console.log("[WitnessAI] Camera permission state:", permStatus.state);
+            if (permStatus.state === 'denied') {
+              throw new DOMException("Camera permission was previously denied", "NotAllowedError");
+            }
+          } catch (permErr) {
+            if (permErr.name === 'NotAllowedError') throw permErr;
+            // Some browsers don't support permissions.query for camera — proceed anyway
+            console.log("[WitnessAI] Permissions API not supported, proceeding with getUserMedia");
+          }
+
           console.log("[WitnessAI] Requesting camera access...");
           camStream = await navigator.mediaDevices.getUserMedia({
             video: {
