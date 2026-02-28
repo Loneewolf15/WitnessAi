@@ -60,7 +60,7 @@ CROWD_DENSITY        = int(os.getenv("CROWD_DENSITY_THRESHOLD", "8"))
 OBJECT_ABANDONMENT   = int(os.getenv("OBJECT_ABANDONMENT_SECONDS", "20"))
 EVIDENCE_OUTPUT_DIR  = os.getenv("EVIDENCE_OUTPUT_DIR", "./evidence_packages")
 GOOGLE_API_KEY       = os.getenv("GOOGLE_API_KEY", "")
-DASHBOARD_PORT       = int(os.getenv("DASHBOARD_PORT", "8000"))
+DASHBOARD_PORT       = int(os.getenv("PORT", os.getenv("DASHBOARD_PORT", "8000")))
 
 
 # ─────────────────────────────────────────────────────────────────

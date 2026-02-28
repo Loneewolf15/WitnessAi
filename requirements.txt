@@ -1,5 +1,4 @@
-# WitnessAI — Railway dashboard deployment
-# YOLOv8/torch NOT included — runs locally with the agent, not needed for dashboard
+# WitnessAI — Full deployment (FastAPI + YOLOv8 backend)
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 python-multipart>=0.0.12
@@ -10,3 +9,6 @@ Pillow>=10.0.0
 python-dotenv>=1.0.0
 scipy>=1.11.0
 google-genai>=1.0.0
+ultralytics>=8.0.0
+torch>=2.0.0
+torchvision>=0.15.0
