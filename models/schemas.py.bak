@@ -1,0 +1,207 @@
+"""
+WitnessAI - Pydantic schemas and data models
+"""
+from __future__ import annotations
+from enum import Enum
+from typing import Optional
+from datetime import datetime
+from pydantic import BaseModel, Field
+
+
+# ---------------------------------------------------------------------------
+# Enums
+# ---------------------------------------------------------------------------
+
+class AnomalyType(str, Enum):
+    LOITERING = "loitering"
+    RUNNING = "running"
+    CROWD_SURGE = "crowd_surge"
+    ABANDONED_OBJECT = "abandoned_object"
+    FALL_DETECTED = "fall_detected"
+    INTRUSION = "intrusion"
+
+
+class ConfidenceLevel(str, Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+
+
+class IncidentStatus(str, Enum):
+    DETECTING = "detecting"
+    CONFIRMED = "confirmed"
+    PACKAGED = "packaged"
+    REVIEWED = "reviewed"
+
+
+# ---------------------------------------------------------------------------
+# Detection Models
+# ---------------------------------------------------------------------------
+
+class BoundingBox(BaseModel):
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+
+    @property
+    def width(self) -> float:
+        return self.x2 - self.x1
+
+    @property
+    def height(self) -> float:
+        return self.y2 - self.y1
+
+    @property
+    def center_x(self) -> float:
+        return (self.x1 + self.x2) / 2
+
+    @property
+    def center_y(self) -> float:
+        return (self.y1 + self.y2) / 2
+
+    @property
+    def area(self) -> float:
+        return self.width * self.height
+
+
+class DetectedObject(BaseModel):
+    track_id: int
+    class_name: str
+    confidence: float
+    bbox: BoundingBox
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    camera_id: str = "default"
+
+    # Velocity (pixels/second) — computed by tracker
+    velocity_x: float = 0.0
+    velocity_y: float = 0.0
+
+    @property
+    def speed(self) -> float:
+        return (self.velocity_x**2 + self.velocity_y**2) ** 0.5
+
+
+class FrameDetections(BaseModel):
+    camera_id: str
+    frame_number: int
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    objects: list[DetectedObject] = Field(default_factory=list)
+    fps: float = 0.0
+
+
+# ---------------------------------------------------------------------------
+# Anomaly Models
+# ---------------------------------------------------------------------------
+
+class AnomalyEvent(BaseModel):
+    id: str
+    camera_id: str
+    anomaly_type: AnomalyType
+    confidence: ConfidenceLevel
+    description: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    involved_track_ids: list[int] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Narration Models
+# ---------------------------------------------------------------------------
+
+class NarrativeEntry(BaseModel):
+    timestamp: datetime
+    text: str
+    anomaly_id: Optional[str] = None
+    camera_id: str = "default"
+
+
+class IncidentNarrative(BaseModel):
+    incident_id: str
+    camera_id: str
+    started_at: datetime
+    entries: list[NarrativeEntry] = Field(default_factory=list)
+
+    def full_text(self) -> str:
+        return "\n".join(
+            f"{e.timestamp.strftime('%H:%M:%S')} — {e.text}"
+            for e in sorted(self.entries, key=lambda x: x.timestamp)
+        )
+
+
+# ---------------------------------------------------------------------------
+# Evidence Models
+# ---------------------------------------------------------------------------
+
+class EvidencePackage(BaseModel):
+    package_id: str
+    incident_id: str
+    camera_id: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    video_path: Optional[str] = None
+    report_path: Optional[str] = None
+    narrative: Optional[IncidentNarrative] = None
+    anomaly_events: list[AnomalyEvent] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Incident Models
+# ---------------------------------------------------------------------------
+
+class Incident(BaseModel):
+    incident_id: str
+    camera_id: str
+    status: IncidentStatus = IncidentStatus.DETECTING
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    anomaly_events: list[AnomalyEvent] = Field(default_factory=list)
+    narrative: Optional[IncidentNarrative] = None
+    evidence_package: Optional[EvidencePackage] = None
+
+
+# ---------------------------------------------------------------------------
+# Camera / Agent Models
+# ---------------------------------------------------------------------------
+
+class CameraConfig(BaseModel):
+    camera_id: str
+    name: str
+    source: str  # URL, RTSP, device index
+    location: str = ""
+    loitering_threshold: int = 30
+    running_velocity_threshold: float = 150.0
+    crowd_density_threshold: int = 8
+    object_abandonment_seconds: int = 20
+
+
+class AgentStatus(BaseModel):
+    camera_id: str
+    is_running: bool
+    fps: float = 0.0
+    total_frames: int = 0
+    total_detections: int = 0
+    total_anomalies: int = 0
+    active_incidents: int = 0
+
+
+# ---------------------------------------------------------------------------
+# API Response Models
+# ---------------------------------------------------------------------------
+
+class APIResponse(BaseModel):
+    success: bool
+    message: str
+    data: Optional[dict] = None
+
+
+class IncidentListResponse(BaseModel):
+    incidents: list[Incident]
+    total: int
+
+
+class WebSocketMessage(BaseModel):
+    event_type: str  # "detection" | "anomaly" | "narrative" | "package_ready"
+    camera_id: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    payload: dict

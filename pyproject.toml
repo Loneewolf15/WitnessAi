@@ -1,0 +1,34 @@
+[project]
+name = "witnessai"
+version = "1.0.0"
+description = "Real-Time Crime Scene Intelligence Agent — Vision Possible Hackathon 2026"
+requires-python = ">=3.12"
+
+dependencies = [
+    # ── Vision Agents SDK (the whole point) ──────────────────────
+    "vision-agents[getstream,gemini,ultralytics,deepgram,elevenlabs]>=0.3.2",
+
+    # ── Backend API + WebSocket ───────────────────────────────────
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "python-multipart>=0.0.12",
+
+    # ── Computer vision ───────────────────────────────────────────
+    "opencv-python-headless>=4.10.0",
+    "numpy>=1.26.0",
+    "Pillow>=10.0.0",
+
+    # ── Utilities ─────────────────────────────────────────────────
+    "python-dotenv>=1.0.0",
+    "scipy>=1.11.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
