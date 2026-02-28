@@ -825,11 +825,12 @@
 
     <script>
       // ── Config ─────────────────────────────────────────────────────────
-      const API_BASE = `${location.protocol}//${location.hostname}:${location.port || 8000}`;
+      const HOST = location.port ? `${location.hostname}:${location.port}` : location.hostname;
+      const API_BASE = `${location.protocol}//${HOST}`;
       const WS_PROTO = location.protocol === "https:" ? "wss:" : "ws:";
-      const WS_URL = `${WS_PROTO}//${location.hostname}:${location.port || 8000}/ws/live`;
-      const CAM_WS_URL = `${WS_PROTO}//${location.hostname}:${location.port || 8000}/ws/camera`;
-      const SEND_FPS = 15; // Frames per second sent to server
+      const WS_URL = `${WS_PROTO}//${HOST}/ws/live`;
+      const CAM_WS_URL = `${WS_PROTO}//${HOST}/ws/camera`;
+      const SEND_FPS = 10; // Frames per second sent to server
       const MAX_INCIDENTS = 60;
       const MAX_NARRATIVE = 200;
 

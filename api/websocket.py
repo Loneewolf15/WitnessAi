@@ -1,9 +1,21 @@
 """WitnessAI — WebSocket handler for real-time dashboard updates"""
 from __future__ import annotations
+import base64
 import json
 import logging
 import os
+import time
+from collections import deque
+
+import numpy as np
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError:
+    cv2 = None
+    CV2_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -55,72 +67,90 @@ async def websocket_live(ws: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(ws)
 
-# ── Import additions for the camera endpoint ──
-import base64
-import time
-from collections import deque
-import numpy as np
-
-try:
-    import cv2
-    CV2_AVAILABLE = True
-except ImportError:
-    cv2 = None
-    CV2_AVAILABLE = False
-
 
 @router.websocket("/camera")
 async def websocket_camera(ws: WebSocket):
-    """WebSocket endpoint that receives live camera frames from the React dashboard."""
+    """WebSocket endpoint that receives live camera frames from the browser.
+
+    Uses frame-skipping: browser sends at high FPS, but the server only
+    processes the latest frame when it finishes the previous one.
+    In between, it echoes back the last annotated frame to keep the
+    video feed smooth on the frontend.
+    """
     await ws.accept()
     logger.info("Camera WS connected from dashboard.")
-    
-    # We need access to the global witness agent instance
+
+    # Late imports to avoid circular dependency
     from main import _witness_agent
     from integration.witness_processor import draw_detections, draw_hud
-    
-    # Tracking metrics for HUD
-    frame_count = 0
-    latencies = deque(maxlen=30)
-    fps_window = deque(maxlen=30)
-    active_anomaly_types = set()
-    last_status = "\U0001f7e2 NOMINAL  —  WitnessAI monitoring"
-    
-    fps = int(os.getenv("PROCESSING_FPS", "5"))
+
+    # ── State ──
+    processed_count = 0
+    latencies: deque = deque(maxlen=30)
+    fps_window: deque = deque(maxlen=30)
+    active_anomaly_types: set = set()
+    last_status = "\U0001f7e2 NOMINAL  \u2014  WitnessAI monitoring"
+    last_annotated_b64: str | None = None
+    fps_cfg = int(os.getenv("PROCESSING_FPS", "5"))
 
     try:
         while True:
-            # Dashboard sends us base64 jpeg encoded frames
+            # ── 1. Receive frame (blocks until browser sends one) ──
             data = await ws.receive_text()
-            if not data.startswith("data:image/jpeg;base64,"):
+            if not data.startswith("data:image/"):
                 continue
 
+            # ── 2. If we have a cached annotated frame, send it immediately ──
+            #    This keeps the frontend feed alive even while we process.
+            if last_annotated_b64:
+                await ws.send_text(last_annotated_b64)
+
+            # ── 3. Drain any queued frames — keep only the LATEST ──
+            #    This is the key frame-skipping trick: discard stale frames.
+            import asyncio
+            while True:
+                try:
+                    newer = await asyncio.wait_for(ws.receive_text(), timeout=0.005)
+                    if newer.startswith("data:image/"):
+                        data = newer  # overwrite with newer frame
+                except asyncio.TimeoutError:
+                    break  # no more queued frames
+
+            # ── 4. Process this (latest) frame through YOLOv8 ──
             t_start = time.perf_counter()
-            frame_count += 1
-            
-            # Decode base64 to numpy array
-            base64_data = data.split(",")[1]
-            img_data = base64.b64decode(base64_data)
-            np_arr = np.frombuffer(img_data, np.uint8)
-            img_bgr = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+            processed_count += 1
+
+            try:
+                base64_data = data.split(",", 1)[1]
+                img_data = base64.b64decode(base64_data)
+                np_arr = np.frombuffer(img_data, np.uint8)
+                img_bgr = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+            except Exception:
+                continue
 
             if img_bgr is None:
                 continue
 
-            # Process frame through WitnessAI
+            # Run YOLO + tracker + anomaly detection
             anomalies = _witness_agent.process_frame(img_bgr)
-            
+
             if anomalies:
                 active_anomaly_types = {a.anomaly_type.value for a in anomalies}
-                last_status = f"\U0001f534 INCIDENT  —  {', '.join(active_anomaly_types).replace('_',' ').upper()}"
-                # Broadcast each anomaly to the /ws/live dashboard panels
+                last_status = (
+                    f"\U0001f534 INCIDENT  \u2014  "
+                    f"{', '.join(active_anomaly_types).replace('_',' ').upper()}"
+                )
+                # Broadcast anomalies to /ws/live
                 for anomaly in anomalies:
                     incident_id = (
                         list(_witness_agent._active_incidents.keys())[-1]
                         if _witness_agent._active_incidents else "unknown"
                     )
                     narrative = _witness_agent._narrator.get_narrative(incident_id)
-                    latest_entry = narrative.entries[-1].text if narrative and narrative.entries else ""
+                    latest_entry = (
+                        narrative.entries[-1].text
+                        if narrative and narrative.entries else ""
+                    )
                     await manager.broadcast_raw({
                         "event_type": "anomaly",
                         "incident_id": incident_id,
@@ -131,11 +161,11 @@ async def websocket_camera(ws: WebSocket):
                         "timestamp": anomaly.timestamp.strftime("%H:%M:%S UTC"),
                         "narrative_entry": latest_entry,
                     })
-            elif frame_count % (fps * 15) == 0:
+            elif processed_count % (fps_cfg * 15) == 0:
                 active_anomaly_types.clear()
-                last_status = "\U0001f7e2 NOMINAL  —  WitnessAI monitoring"
+                last_status = "\U0001f7e2 NOMINAL  \u2014  WitnessAI monitoring"
 
-            # Compute metrics
+            # ── 5. Compute metrics ──
             t_end = time.perf_counter()
             latency_ms = (t_end - t_start) * 1000
             latencies.append(latency_ms)
@@ -147,14 +177,14 @@ async def websocket_camera(ws: WebSocket):
                 span = fps_window[-1] - fps_window[0]
                 actual_fps = (len(fps_window) - 1) / span if span > 0 else 0.0
 
-            # Broadcast metrics to /ws/live every 10 frames
-            if frame_count % 10 == 0:
+            # Broadcast metrics every 5 processed frames
+            if processed_count % 5 == 0:
                 status = _witness_agent.status()
                 await manager.broadcast_raw({
                     "event_type": "metrics",
                     "fps": round(actual_fps, 1),
                     "latency_ms": round(avg_latency, 1),
-                    "frame_count": frame_count,
+                    "frame_count": processed_count,
                     "tracked_persons": len(_witness_agent._tracker.active_tracks),
                     "total_anomalies": status.total_anomalies,
                     "active_incidents": status.active_incidents,
@@ -162,8 +192,11 @@ async def websocket_camera(ws: WebSocket):
                     "anomaly_types": list(active_anomaly_types),
                 })
 
-            # Draw HUD
-            tracked = [t.to_detected_object() for t in _witness_agent._tracker.active_tracks.values()]
+            # ── 6. Annotate and cache ──
+            tracked = [
+                t.to_detected_object()
+                for t in _witness_agent._tracker.active_tracks.values()
+            ]
             if CV2_AVAILABLE:
                 annotated = draw_detections(img_bgr, tracked, active_anomaly_types)
                 annotated = draw_hud(
@@ -172,20 +205,21 @@ async def websocket_camera(ws: WebSocket):
                     is_incident=bool(active_anomaly_types),
                     fps=actual_fps,
                     latency_ms=avg_latency,
-                    frame_count=frame_count,
+                    frame_count=processed_count,
                     tracked_count=len(tracked),
                 )
-                
-                # Encode back to base64 jpeg
-                _, buffer = cv2.imencode('.jpg', annotated, [cv2.IMWRITE_JPEG_QUALITY, 70])
-                out_b64 = base64.b64encode(buffer).decode('utf-8')
-                out_data = f"data:image/jpeg;base64,{out_b64}"
-                
-                # Send back to dashboard
-                await ws.send_text(out_data)
+                _, buf = cv2.imencode(
+                    '.jpg', annotated, [cv2.IMWRITE_JPEG_QUALITY, 70]
+                )
+                last_annotated_b64 = (
+                    f"data:image/jpeg;base64,"
+                    f"{base64.b64encode(buf).decode('utf-8')}"
+                )
+
+                # Send the freshly annotated frame
+                await ws.send_text(last_annotated_b64)
 
     except WebSocketDisconnect:
         logger.info("Camera WS disconnected.")
     except Exception as e:
-        logger.error(f"Camera WS error: {e}")
-
+        logger.error(f"Camera WS error: {e}", exc_info=True)
