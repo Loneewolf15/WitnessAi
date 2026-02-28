@@ -1,3 +1,6 @@
+# CPU-only PyTorch (keeps image under 4GB for Railway)
+--extra-index-url https://download.pytorch.org/whl/cpu
+
 # WitnessAI — Full deployment (FastAPI + YOLOv8 backend)
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
