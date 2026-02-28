@@ -672,6 +672,87 @@
         object-fit: contain;
         display: none;
       }
+
+      /* ── MOBILE RESPONSIVE ─────────────────────────── */
+      @media (max-width: 768px) {
+        body { overflow: auto; }
+
+        header {
+          height: auto;
+          padding: 8px 12px;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .logo { font-size: 11px; gap: 6px; }
+        .logo-eye { font-size: 16px; }
+
+        .header-badges { display: none; }
+
+        .conn-status { font-size: 10px; }
+
+        main {
+          grid-template-columns: 1fr;
+          grid-template-rows: auto;
+          overflow: auto;
+          flex: none;
+        }
+
+        .panel { min-height: 200px; }
+
+        #video-panel { min-height: 280px; }
+
+        #incident-panel { grid-column: 1; grid-row: auto; }
+        #narrative-panel { grid-column: 1; grid-row: auto; min-height: 150px; }
+        #evidence-panel { grid-column: 1; grid-row: auto; min-height: 120px; }
+
+        .metrics-strip {
+          height: auto;
+          flex-wrap: wrap;
+        }
+
+        .metric {
+          flex: 1 1 30%;
+          min-width: 80px;
+          padding: 6px 10px;
+        }
+
+        .metric-label { font-size: 8px; }
+        .metric-value { font-size: 13px; }
+
+        .incident-list { max-height: 300px; }
+        .narrative-scroll { max-height: 200px; }
+        .evidence-list { max-height: 200px; }
+
+        .feed-container { min-height: 240px; }
+
+        .btn-camera {
+          font-size: 11px;
+          padding: 10px 20px;
+        }
+
+        footer {
+          height: auto;
+          padding: 6px 12px;
+          flex-wrap: wrap;
+          gap: 8px 16px;
+        }
+
+        .status-item { font-size: 8px; }
+
+        #alert-banner {
+          font-size: 10px;
+          padding: 6px 12px;
+          top: auto;
+        }
+      }
+
+      @media (max-width: 400px) {
+        .logo { font-size: 10px; }
+        .metric { flex: 1 1 45%; }
+        .panel-title { font-size: 9px; }
+        .feed-container { min-height: 200px; }
+      }
     </style>
   </head>
   <body>
