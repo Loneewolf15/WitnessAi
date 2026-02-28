@@ -1,37 +1,11 @@
-# Core framework
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-python-multipart==0.0.9
-websockets==13.1
-
-# Computer Vision
-opencv-python-headless==4.10.0.84
-ultralytics==8.3.0
-numpy==1.26.4
-Pillow==10.4.0
-
-# Object Tracking
-scipy==1.14.1
-
-# LLM APIs
-google-generativeai==0.8.3
-anthropic==0.40.0
-
-# Async & utilities
-httpx==0.27.2
-pydantic==2.9.2
-pydantic-settings==2.6.0
-python-dotenv==1.0.1
-aiofiles==24.1.0
-
-# Database
-sqlalchemy==2.0.36
-aiosqlite==0.20.0
-
-# Testing
-pytest==8.3.3
-pytest-asyncio==0.24.0
-pytest-mock==3.14.0
-
-# Logging
-loguru==0.7.2
+# WitnessAI — Railway dashboard deployment
+# YOLOv8/torch NOT included — runs locally with the agent, not needed for dashboard
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-multipart>=0.0.12
+websockets>=13.0
+opencv-python-headless>=4.10.0
+numpy>=1.26.0
+Pillow>=10.0.0
+python-dotenv>=1.0.0
+scipy>=1.11.0
