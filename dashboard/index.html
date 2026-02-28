@@ -1,852 +1,1230 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>WitnessAI — Operator Console</title>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600&display=swap');
-
-  :root {
-    --bg:        #080b0f;
-    --surface:   #0d1117;
-    --surface2:  #131920;
-    --border:    #1e2d3d;
-    --accent:    #00e5ff;
-    --red:       #ff3b3b;
-    --orange:    #ff8c00;
-    --green:     #00e676;
-    --yellow:    #ffd740;
-    --text:      #c9d1d9;
-    --text-dim:  #586069;
-    --mono:      'Space Mono', monospace;
-    --sans:      'Inter', sans-serif;
-  }
-
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--sans);
-    min-height: 100vh;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-  }
-
-  /* ── HEADER ─────────────────────────────────────── */
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 24px;
-    height: 52px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-    gap: 16px;
-  }
-
-  .logo {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-family: var(--mono);
-    font-size: 14px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    color: var(--accent);
-    white-space: nowrap;
-  }
-
-  .logo-eye {
-    font-size: 20px;
-    animation: pulse-eye 3s ease-in-out infinite;
-  }
-
-  @keyframes pulse-eye {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50%       { opacity: 0.6; transform: scale(0.9); }
-  }
-
-  .header-badges {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    flex-shrink: 0;
-  }
-
-  .badge {
-    font-family: var(--mono);
-    font-size: 10px;
-    padding: 3px 8px;
-    border-radius: 3px;
-    letter-spacing: 0.06em;
-    font-weight: 700;
-    border: 1px solid;
-  }
-
-  .badge-sdk    { color: var(--accent); border-color: var(--accent); background: rgba(0,229,255,.07); }
-  .badge-gemini { color: #c084fc;       border-color: #7c3aed;       background: rgba(124,58,237,.1); }
-  .badge-yolo   { color: var(--green);  border-color: var(--green);  background: rgba(0,230,118,.07); }
-
-  .conn-status {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    font-family: var(--mono);
-    color: var(--text-dim);
-    white-space: nowrap;
-  }
-
-  .conn-dot {
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    background: var(--text-dim);
-    transition: background .3s, box-shadow .3s;
-  }
-
-  .conn-dot.live  { background: var(--green);  box-shadow: 0 0 8px var(--green); }
-  .conn-dot.alert { background: var(--red);    box-shadow: 0 0 12px var(--red); animation: blink .5s steps(1) infinite; }
-
-  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
-
-  /* ── MAIN LAYOUT ────────────────────────────────── */
-  main {
-    flex: 1;
-    display: grid;
-    grid-template-columns: 1fr 340px;
-    grid-template-rows: 1fr 200px;
-    gap: 1px;
-    background: var(--border);
-    overflow: hidden;
-  }
-
-  .panel {
-    background: var(--surface);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .panel-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 16px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-
-  .panel-title {
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.12em;
-    font-weight: 700;
-    color: var(--text-dim);
-    text-transform: uppercase;
-  }
-
-  /* ── VIDEO PANEL ────────────────────────────────── */
-  #video-panel {
-    grid-row: 1;
-    grid-column: 1;
-    position: relative;
-  }
-
-  .feed-container {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #000;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .feed-placeholder {
-    text-align: center;
-    color: var(--text-dim);
-    font-family: var(--mono);
-    font-size: 12px;
-    line-height: 2;
-    pointer-events: none;
-    user-select: none;
-  }
-
-  .feed-placeholder-icon {
-    font-size: 40px;
-    display: block;
-    margin-bottom: 12px;
-    opacity: 0.3;
-  }
-
-  .feed-url {
-    color: var(--accent);
-    font-size: 11px;
-    opacity: 0.7;
-  }
-
-  /* Scanline overlay */
-  .feed-container::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(0,0,0,.08) 2px,
-      rgba(0,0,0,.08) 4px
-    );
-    pointer-events: none;
-    z-index: 2;
-  }
-
-  /* ── METRICS STRIP ──────────────────────────────── */
-  .metrics-strip {
-    display: flex;
-    gap: 1px;
-    background: var(--border);
-    flex-shrink: 0;
-    height: 42px;
-  }
-
-  .metric {
-    flex: 1;
-    background: var(--surface2);
-    display: flex;
-    align-items: center;
-    padding: 0 14px;
-    gap: 10px;
-  }
-
-  .metric-label {
-    font-family: var(--mono);
-    font-size: 9px;
-    letter-spacing: 0.1em;
-    color: var(--text-dim);
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-
-  .metric-value {
-    font-family: var(--mono);
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--accent);
-    min-width: 40px;
-    transition: color .3s;
-  }
-
-  .metric-value.alert { color: var(--red); }
-  .metric-value.warn  { color: var(--orange); }
-  .metric-value.good  { color: var(--green); }
-
-  /* ── INCIDENT FEED ──────────────────────────────── */
-  #incident-panel {
-    grid-row: 1;
-    grid-column: 2;
-  }
-
-  .incident-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .incident-list::-webkit-scrollbar { width: 4px; }
-  .incident-list::-webkit-scrollbar-track { background: transparent; }
-  .incident-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
-  .incident-card {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 10px 12px;
-    border-left: 3px solid var(--border);
-    animation: slide-in .25s ease-out;
-    cursor: pointer;
-    transition: border-color .2s, background .2s;
-  }
-
-  .incident-card:hover { background: #161e27; border-color: var(--accent); }
-
-  .incident-card.loitering        { border-left-color: var(--orange); }
-  .incident-card.running          { border-left-color: var(--red); }
-  .incident-card.crowd_surge      { border-left-color: #c084fc; }
-  .incident-card.fall_detected    { border-left-color: var(--red); }
-  .incident-card.abandoned_object { border-left-color: var(--yellow); }
-
-  @keyframes slide-in {
-    from { opacity: 0; transform: translateX(12px); }
-    to   { opacity: 1; transform: translateX(0); }
-  }
-
-  .incident-type {
-    font-family: var(--mono);
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    margin-bottom: 4px;
-  }
-
-  .loitering .incident-type        { color: var(--orange); }
-  .running .incident-type          { color: var(--red); }
-  .crowd_surge .incident-type      { color: #c084fc; }
-  .fall_detected .incident-type    { color: var(--red); }
-  .abandoned_object .incident-type { color: var(--yellow); }
-
-  .incident-desc {
-    font-size: 11px;
-    color: var(--text);
-    line-height: 1.5;
-    margin-bottom: 6px;
-  }
-
-  .incident-meta {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .incident-time {
-    font-family: var(--mono);
-    font-size: 9px;
-    color: var(--text-dim);
-  }
-
-  .conf-badge {
-    font-family: var(--mono);
-    font-size: 8px;
-    padding: 2px 5px;
-    border-radius: 2px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-  }
-
-  .conf-HIGH   { background: rgba(255,59,59,.15);  color: var(--red);    border: 1px solid rgba(255,59,59,.3); }
-  .conf-MEDIUM { background: rgba(255,140,0,.12);  color: var(--orange); border: 1px solid rgba(255,140,0,.3); }
-  .conf-LOW    { background: rgba(201,209,217,.08); color: var(--text-dim); border: 1px solid var(--border); }
-
-  .no-incidents {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    gap: 8px;
-    color: var(--text-dim);
-    font-family: var(--mono);
-    font-size: 11px;
-    opacity: 0.6;
-  }
-
-  /* ── NARRATIVE PANEL ────────────────────────────── */
-  #narrative-panel {
-    grid-row: 2;
-    grid-column: 1;
-  }
-
-  .narrative-scroll {
-    flex: 1;
-    overflow-y: auto;
-    padding: 12px 16px;
-    font-family: var(--mono);
-    font-size: 11px;
-    line-height: 1.8;
-    color: var(--text);
-  }
-
-  .narrative-scroll::-webkit-scrollbar { width: 4px; }
-  .narrative-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
-  .narrative-entry {
-    display: flex;
-    gap: 12px;
-    padding: 3px 0;
-    border-bottom: 1px solid rgba(30,45,61,.5);
-    animation: fade-in .3s ease-out;
-  }
-
-  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-
-  .narrative-ts {
-    color: var(--text-dim);
-    white-space: nowrap;
-    flex-shrink: 0;
-    font-size: 10px;
-    padding-top: 2px;
-  }
-
-  .narrative-text { color: var(--text); }
-
-  .narrative-empty {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    color: var(--text-dim);
-    font-size: 11px;
-    opacity: 0.5;
-  }
-
-  /* ── EVIDENCE PANEL ─────────────────────────────── */
-  #evidence-panel {
-    grid-row: 2;
-    grid-column: 2;
-  }
-
-  .evidence-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .evidence-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 10px;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    font-size: 11px;
-    animation: slide-in .2s ease-out;
-  }
-
-  .evidence-id {
-    font-family: var(--mono);
-    font-size: 9px;
-    color: var(--text-dim);
-  }
-
-  .evidence-count {
-    font-family: var(--mono);
-    font-size: 10px;
-    color: var(--orange);
-  }
-
-  .btn-download {
-    font-family: var(--mono);
-    font-size: 9px;
-    padding: 3px 8px;
-    background: transparent;
-    border: 1px solid var(--accent);
-    color: var(--accent);
-    border-radius: 2px;
-    cursor: pointer;
-    letter-spacing: 0.06em;
-    transition: background .15s, color .15s;
-  }
-
-  .btn-download:hover { background: var(--accent); color: var(--bg); }
-
-  /* ── STATUS BAR ─────────────────────────────────── */
-  footer {
-    height: 26px;
-    background: var(--surface);
-    border-top: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    padding: 0 16px;
-    gap: 24px;
-    flex-shrink: 0;
-  }
-
-  .status-item {
-    font-family: var(--mono);
-    font-size: 9px;
-    color: var(--text-dim);
-    letter-spacing: 0.06em;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-  }
-
-  .status-item span { color: var(--text); }
-
-  /* ── ALERT FLASH ────────────────────────────────── */
-  #alert-banner {
-    position: fixed;
-    top: 52px;
-    left: 0; right: 0;
-    background: var(--red);
-    color: #fff;
-    font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    padding: 8px 24px;
-    z-index: 100;
-    display: none;
-    align-items: center;
-    gap: 12px;
-    animation: flash-in .2s ease-out;
-    text-transform: uppercase;
-  }
-
-  @keyframes flash-in { from { transform: translateY(-100%); } to { transform: translateY(0); } }
-
-  #alert-banner.show { display: flex; }
-</style>
-</head>
-<body>
-
-<header>
-  <div class="logo">
-    <span class="logo-eye">👁</span>
-    WITNESSAI &mdash; OPERATOR CONSOLE
-  </div>
-  <div class="header-badges">
-    <span class="badge badge-sdk">STREAM SDK</span>
-    <span class="badge badge-gemini">GEMINI 5FPS</span>
-    <span class="badge badge-yolo">YOLOv8</span>
-  </div>
-  <div class="conn-status">
-    <div class="conn-dot" id="conn-dot"></div>
-    <span id="conn-label">CONNECTING</span>
-  </div>
-</header>
-
-<div id="alert-banner">
-  <span>⚠</span>
-  <span id="alert-text">INCIDENT DETECTED</span>
-</div>
-
-<main>
-
-  <!-- ── VIDEO FEED ── -->
-  <div class="panel" id="video-panel">
-    <div class="panel-header">
-      <span class="panel-title">📡 Live Feed — cam-main</span>
-      <span class="panel-title" id="fps-label" style="color:var(--accent)">—</span>
-    </div>
-    <div class="feed-container">
-      <div class="feed-placeholder">
-        <span class="feed-placeholder-icon">📷</span>
-        Live annotated feed appears here<br>when a participant joins the Stream call
-        <br><br>
-        <span class="feed-url">Join call: <strong>witnessai-demo-001</strong></span>
-        <br>
-        <span class="feed-url">Via: getstream.io dashboard or React client</span>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WitnessAI — Operator Console</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600&display=swap");
+
+      :root {
+        --bg: #080b0f;
+        --surface: #0d1117;
+        --surface2: #131920;
+        --border: #1e2d3d;
+        --accent: #00e5ff;
+        --red: #ff3b3b;
+        --orange: #ff8c00;
+        --green: #00e676;
+        --yellow: #ffd740;
+        --text: #c9d1d9;
+        --text-dim: #586069;
+        --mono: "Space Mono", monospace;
+        --sans: "Inter", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--sans);
+        min-height: 100vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* ── HEADER ─────────────────────────────────────── */
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 24px;
+        height: 52px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+        gap: 16px;
+      }
+
+      .logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-family: var(--mono);
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        color: var(--accent);
+        white-space: nowrap;
+      }
+
+      .logo-eye {
+        font-size: 20px;
+        animation: pulse-eye 3s ease-in-out infinite;
+      }
+
+      @keyframes pulse-eye {
+        0%,
+        100% {
+          opacity: 1;
+          transform: scale(1);
+        }
+        50% {
+          opacity: 0.6;
+          transform: scale(0.9);
+        }
+      }
+
+      .header-badges {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-shrink: 0;
+      }
+
+      .badge {
+        font-family: var(--mono);
+        font-size: 10px;
+        padding: 3px 8px;
+        border-radius: 3px;
+        letter-spacing: 0.06em;
+        font-weight: 700;
+        border: 1px solid;
+      }
+
+      .badge-sdk {
+        color: var(--accent);
+        border-color: var(--accent);
+        background: rgba(0, 229, 255, 0.07);
+      }
+      .badge-gemini {
+        color: #c084fc;
+        border-color: #7c3aed;
+        background: rgba(124, 58, 237, 0.1);
+      }
+      .badge-yolo {
+        color: var(--green);
+        border-color: var(--green);
+        background: rgba(0, 230, 118, 0.07);
+      }
+
+      .conn-status {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        font-family: var(--mono);
+        color: var(--text-dim);
+        white-space: nowrap;
+      }
+
+      .conn-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--text-dim);
+        transition:
+          background 0.3s,
+          box-shadow 0.3s;
+      }
+
+      .conn-dot.live {
+        background: var(--green);
+        box-shadow: 0 0 8px var(--green);
+      }
+      .conn-dot.alert {
+        background: var(--red);
+        box-shadow: 0 0 12px var(--red);
+        animation: blink 0.5s steps(1) infinite;
+      }
+
+      @keyframes blink {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0;
+        }
+      }
+
+      /* ── MAIN LAYOUT ────────────────────────────────── */
+      main {
+        flex: 1;
+        display: grid;
+        grid-template-columns: 1fr 340px;
+        grid-template-rows: 1fr 200px;
+        gap: 1px;
+        background: var(--border);
+        overflow: hidden;
+      }
+
+      .panel {
+        background: var(--surface);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+
+      .panel-title {
+        font-family: var(--mono);
+        font-size: 10px;
+        letter-spacing: 0.12em;
+        font-weight: 700;
+        color: var(--text-dim);
+        text-transform: uppercase;
+      }
+
+      /* ── VIDEO PANEL ────────────────────────────────── */
+      #video-panel {
+        grid-row: 1;
+        grid-column: 1;
+        position: relative;
+      }
+
+      .feed-container {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #000;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .feed-placeholder {
+        text-align: center;
+        color: var(--text-dim);
+        font-family: var(--mono);
+        font-size: 12px;
+        line-height: 2;
+        pointer-events: none;
+        user-select: none;
+      }
+
+      .feed-placeholder-icon {
+        font-size: 40px;
+        display: block;
+        margin-bottom: 12px;
+        opacity: 0.3;
+      }
+
+      .feed-url {
+        color: var(--accent);
+        font-size: 11px;
+        opacity: 0.7;
+      }
+
+      /* Scanline overlay */
+      .feed-container::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 2px,
+          rgba(0, 0, 0, 0.08) 2px,
+          rgba(0, 0, 0, 0.08) 4px
+        );
+        pointer-events: none;
+        z-index: 2;
+      }
+
+      /* ── METRICS STRIP ──────────────────────────────── */
+      .metrics-strip {
+        display: flex;
+        gap: 1px;
+        background: var(--border);
+        flex-shrink: 0;
+        height: 42px;
+      }
+
+      .metric {
+        flex: 1;
+        background: var(--surface2);
+        display: flex;
+        align-items: center;
+        padding: 0 14px;
+        gap: 10px;
+      }
+
+      .metric-label {
+        font-family: var(--mono);
+        font-size: 9px;
+        letter-spacing: 0.1em;
+        color: var(--text-dim);
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+
+      .metric-value {
+        font-family: var(--mono);
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--accent);
+        min-width: 40px;
+        transition: color 0.3s;
+      }
+
+      .metric-value.alert {
+        color: var(--red);
+      }
+      .metric-value.warn {
+        color: var(--orange);
+      }
+      .metric-value.good {
+        color: var(--green);
+      }
+
+      /* ── INCIDENT FEED ──────────────────────────────── */
+      #incident-panel {
+        grid-row: 1;
+        grid-column: 2;
+      }
+
+      .incident-list {
+        flex: 1;
+        overflow-y: auto;
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .incident-list::-webkit-scrollbar {
+        width: 4px;
+      }
+      .incident-list::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .incident-list::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 2px;
+      }
+
+      .incident-card {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 10px 12px;
+        border-left: 3px solid var(--border);
+        animation: slide-in 0.25s ease-out;
+        cursor: pointer;
+        transition:
+          border-color 0.2s,
+          background 0.2s;
+      }
+
+      .incident-card:hover {
+        background: #161e27;
+        border-color: var(--accent);
+      }
+
+      .incident-card.loitering {
+        border-left-color: var(--orange);
+      }
+      .incident-card.running {
+        border-left-color: var(--red);
+      }
+      .incident-card.crowd_surge {
+        border-left-color: #c084fc;
+      }
+      .incident-card.fall_detected {
+        border-left-color: var(--red);
+      }
+      .incident-card.abandoned_object {
+        border-left-color: var(--yellow);
+      }
+
+      @keyframes slide-in {
+        from {
+          opacity: 0;
+          transform: translateX(12px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+
+      .incident-type {
+        font-family: var(--mono);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+      }
+
+      .loitering .incident-type {
+        color: var(--orange);
+      }
+      .running .incident-type {
+        color: var(--red);
+      }
+      .crowd_surge .incident-type {
+        color: #c084fc;
+      }
+      .fall_detected .incident-type {
+        color: var(--red);
+      }
+      .abandoned_object .incident-type {
+        color: var(--yellow);
+      }
+
+      .incident-desc {
+        font-size: 11px;
+        color: var(--text);
+        line-height: 1.5;
+        margin-bottom: 6px;
+      }
+
+      .incident-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .incident-time {
+        font-family: var(--mono);
+        font-size: 9px;
+        color: var(--text-dim);
+      }
+
+      .conf-badge {
+        font-family: var(--mono);
+        font-size: 8px;
+        padding: 2px 5px;
+        border-radius: 2px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+      }
+
+      .conf-HIGH {
+        background: rgba(255, 59, 59, 0.15);
+        color: var(--red);
+        border: 1px solid rgba(255, 59, 59, 0.3);
+      }
+      .conf-MEDIUM {
+        background: rgba(255, 140, 0, 0.12);
+        color: var(--orange);
+        border: 1px solid rgba(255, 140, 0, 0.3);
+      }
+      .conf-LOW {
+        background: rgba(201, 209, 217, 0.08);
+        color: var(--text-dim);
+        border: 1px solid var(--border);
+      }
+
+      .no-incidents {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 8px;
+        color: var(--text-dim);
+        font-family: var(--mono);
+        font-size: 11px;
+        opacity: 0.6;
+      }
+
+      /* ── NARRATIVE PANEL ────────────────────────────── */
+      #narrative-panel {
+        grid-row: 2;
+        grid-column: 1;
+      }
+
+      .narrative-scroll {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px 16px;
+        font-family: var(--mono);
+        font-size: 11px;
+        line-height: 1.8;
+        color: var(--text);
+      }
+
+      .narrative-scroll::-webkit-scrollbar {
+        width: 4px;
+      }
+      .narrative-scroll::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 2px;
+      }
+
+      .narrative-entry {
+        display: flex;
+        gap: 12px;
+        padding: 3px 0;
+        border-bottom: 1px solid rgba(30, 45, 61, 0.5);
+        animation: fade-in 0.3s ease-out;
+      }
+
+      @keyframes fade-in {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
+      .narrative-ts {
+        color: var(--text-dim);
+        white-space: nowrap;
+        flex-shrink: 0;
+        font-size: 10px;
+        padding-top: 2px;
+      }
+
+      .narrative-text {
+        color: var(--text);
+      }
+
+      .narrative-empty {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: var(--text-dim);
+        font-size: 11px;
+        opacity: 0.5;
+      }
+
+      /* ── EVIDENCE PANEL ─────────────────────────────── */
+      #evidence-panel {
+        grid-row: 2;
+        grid-column: 2;
+      }
+
+      .evidence-list {
+        flex: 1;
+        overflow-y: auto;
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .evidence-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 10px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 3px;
+        font-size: 11px;
+        animation: slide-in 0.2s ease-out;
+      }
+
+      .evidence-id {
+        font-family: var(--mono);
+        font-size: 9px;
+        color: var(--text-dim);
+      }
+
+      .evidence-count {
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--orange);
+      }
+
+      .btn-download {
+        font-family: var(--mono);
+        font-size: 9px;
+        padding: 3px 8px;
+        background: transparent;
+        border: 1px solid var(--accent);
+        color: var(--accent);
+        border-radius: 2px;
+        cursor: pointer;
+        letter-spacing: 0.06em;
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+
+      .btn-download:hover {
+        background: var(--accent);
+        color: var(--bg);
+      }
+
+      /* ── STATUS BAR ─────────────────────────────────── */
+      footer {
+        height: 26px;
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        gap: 24px;
+        flex-shrink: 0;
+      }
+
+      .status-item {
+        font-family: var(--mono);
+        font-size: 9px;
+        color: var(--text-dim);
+        letter-spacing: 0.06em;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+
+      .status-item span {
+        color: var(--text);
+      }
+
+      /* ── ALERT FLASH ────────────────────────────────── */
+      #alert-banner {
+        position: fixed;
+        top: 52px;
+        left: 0;
+        right: 0;
+        background: var(--red);
+        color: #fff;
+        font-family: var(--mono);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        padding: 8px 24px;
+        z-index: 100;
+        display: none;
+        align-items: center;
+        gap: 12px;
+        animation: flash-in 0.2s ease-out;
+        text-transform: uppercase;
+      }
+
+      @keyframes flash-in {
+        from {
+          transform: translateY(-100%);
+        }
+        to {
+          transform: translateY(0);
+        }
+      }
+
+      #alert-banner.show {
+        display: flex;
+      }
+
+      /* ── CAMERA BUTTON ──────────────────────────────── */
+      .btn-camera {
+        font-family: var(--mono);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        padding: 12px 28px;
+        background: linear-gradient(135deg, var(--accent), #00b8d4);
+        color: var(--bg);
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        transition:
+          transform 0.15s,
+          box-shadow 0.15s;
+        text-transform: uppercase;
+        z-index: 5;
+      }
+      .btn-camera:hover {
+        transform: scale(1.05);
+        box-shadow: 0 0 20px rgba(0, 229, 255, 0.4);
+      }
+      .btn-camera:active {
+        transform: scale(0.98);
+      }
+      .btn-camera.recording {
+        background: linear-gradient(135deg, var(--red), #ff6b6b);
+        animation: pulse-btn 1.5s ease-in-out infinite;
+      }
+      @keyframes pulse-btn {
+        0%,
+        100% {
+          box-shadow: 0 0 8px rgba(255, 59, 59, 0.3);
+        }
+        50% {
+          box-shadow: 0 0 20px rgba(255, 59, 59, 0.6);
+        }
+      }
+
+      #cam-canvas {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="logo">
+        <span class="logo-eye">👁</span>
+        WITNESSAI &mdash; OPERATOR CONSOLE
       </div>
-    </div>
-    <div class="metrics-strip">
-      <div class="metric">
-        <span class="metric-label">FPS</span>
-        <span class="metric-value" id="m-fps">—</span>
+      <div class="header-badges">
+        <span class="badge badge-sdk">STREAM SDK</span>
+        <span class="badge badge-gemini">GEMINI 5FPS</span>
+        <span class="badge badge-yolo">YOLOv8</span>
       </div>
-      <div class="metric">
-        <span class="metric-label">Latency</span>
-        <span class="metric-value" id="m-lat">—</span>
+      <div class="conn-status">
+        <div class="conn-dot" id="conn-dot"></div>
+        <span id="conn-label">CONNECTING</span>
       </div>
-      <div class="metric">
-        <span class="metric-label">Tracking</span>
-        <span class="metric-value" id="m-trk">0</span>
+    </header>
+
+    <div id="alert-banner">
+      <span>⚠</span>
+      <span id="alert-text">INCIDENT DETECTED</span>
+    </div>
+
+    <main>
+      <!-- ── VIDEO FEED ── -->
+      <div class="panel" id="video-panel">
+        <div class="panel-header">
+          <span class="panel-title">📡 Live Feed — cam-main</span>
+          <span class="panel-title" id="fps-label" style="color: var(--accent)"
+            >—</span
+          >
+        </div>
+        <div class="feed-container" id="feed-container">
+          <video
+            id="cam-video"
+            autoplay
+            playsinline
+            muted
+            style="display: none"
+          ></video>
+          <canvas id="cam-canvas"></canvas>
+          <div class="feed-placeholder" id="feed-placeholder">
+            <span class="feed-placeholder-icon">📷</span>
+            <button
+              class="btn-camera"
+              id="btn-start-camera"
+              onclick="startCamera()"
+            >
+              ▶ START CAMERA
+            </button>
+            <br /><br />
+            <span class="feed-url">Click to activate your laptop camera</span>
+            <br />
+            <span class="feed-url"
+              >Frames are processed by WitnessAI in real-time</span
+            >
+          </div>
+        </div>
+        <div class="metrics-strip">
+          <div class="metric">
+            <span class="metric-label">FPS</span>
+            <span class="metric-value" id="m-fps">—</span>
+          </div>
+          <div class="metric">
+            <span class="metric-label">Latency</span>
+            <span class="metric-value" id="m-lat">—</span>
+          </div>
+          <div class="metric">
+            <span class="metric-label">Tracking</span>
+            <span class="metric-value" id="m-trk">0</span>
+          </div>
+          <div class="metric">
+            <span class="metric-label">Frames</span>
+            <span class="metric-value" id="m-frm">0</span>
+          </div>
+          <div class="metric">
+            <span class="metric-label">Anomalies</span>
+            <span class="metric-value" id="m-anm">0</span>
+          </div>
+          <div class="metric">
+            <span class="metric-label">Incidents</span>
+            <span class="metric-value" id="m-inc">0</span>
+          </div>
+        </div>
       </div>
-      <div class="metric">
-        <span class="metric-label">Frames</span>
-        <span class="metric-value" id="m-frm">0</span>
+
+      <!-- ── INCIDENT FEED ── -->
+      <div class="panel" id="incident-panel">
+        <div class="panel-header">
+          <span class="panel-title">⚠ Anomaly Log</span>
+          <span
+            class="panel-title"
+            id="incident-count"
+            style="color: var(--accent)"
+            >0 events</span
+          >
+        </div>
+        <div class="incident-list" id="incident-list">
+          <div class="no-incidents">
+            <span style="font-size: 24px; opacity: 0.3">🔍</span>
+            Monitoring for anomalies...
+          </div>
+        </div>
       </div>
-      <div class="metric">
-        <span class="metric-label">Anomalies</span>
-        <span class="metric-value" id="m-anm">0</span>
+
+      <!-- ── NARRATIVE ── -->
+      <div class="panel" id="narrative-panel">
+        <div class="panel-header">
+          <span class="panel-title">📋 AI Incident Narrative</span>
+          <span
+            class="panel-title"
+            id="narrative-count"
+            style="color: var(--accent)"
+            >0 entries</span
+          >
+        </div>
+        <div class="narrative-scroll" id="narrative-scroll">
+          <div class="narrative-empty">
+            Narrative will appear when an incident is detected
+          </div>
+        </div>
       </div>
-      <div class="metric">
-        <span class="metric-label">Incidents</span>
-        <span class="metric-value" id="m-inc">0</span>
+
+      <!-- ── EVIDENCE ── -->
+      <div class="panel" id="evidence-panel">
+        <div class="panel-header">
+          <span class="panel-title">📦 Evidence Packages</span>
+          <span class="panel-title" id="pkg-count" style="color: var(--accent)"
+            >0</span
+          >
+        </div>
+        <div class="evidence-list" id="evidence-list">
+          <div class="no-incidents" style="height: 100%">
+            <span style="font-size: 20px; opacity: 0.3">🗂</span>
+            No packages yet
+          </div>
+        </div>
       </div>
-    </div>
-  </div>
+    </main>
 
-  <!-- ── INCIDENT FEED ── -->
-  <div class="panel" id="incident-panel">
-    <div class="panel-header">
-      <span class="panel-title">⚠ Anomaly Log</span>
-      <span class="panel-title" id="incident-count" style="color:var(--accent)">0 events</span>
-    </div>
-    <div class="incident-list" id="incident-list">
-      <div class="no-incidents">
-        <span style="font-size:24px;opacity:.3">🔍</span>
-        Monitoring for anomalies...
+    <footer>
+      <div class="status-item">SYSTEM <span id="sys-status">NOMINAL</span></div>
+      <div class="status-item">CAMERA <span>cam-main</span></div>
+      <div class="status-item">
+        SDK <span>Stream Vision Agents v0.3.2</span>
       </div>
-    </div>
-  </div>
+      <div class="status-item">LLM <span>Gemini Realtime</span></div>
+      <div class="status-item">TIME <span id="sys-time">--:--:--</span></div>
+    </footer>
 
-  <!-- ── NARRATIVE ── -->
-  <div class="panel" id="narrative-panel">
-    <div class="panel-header">
-      <span class="panel-title">📋 AI Incident Narrative</span>
-      <span class="panel-title" id="narrative-count" style="color:var(--accent)">0 entries</span>
-    </div>
-    <div class="narrative-scroll" id="narrative-scroll">
-      <div class="narrative-empty">Narrative will appear when an incident is detected</div>
-    </div>
-  </div>
+    <script>
+      // ── Config ─────────────────────────────────────────────────────────
+      const API_BASE = `${location.protocol}//${location.hostname}:${location.port || 8000}`;
+      const WS_PROTO = location.protocol === "https:" ? "wss:" : "ws:";
+      const WS_URL = `${WS_PROTO}//${location.hostname}:${location.port || 8000}/ws/live`;
+      const CAM_WS_URL = `${WS_PROTO}//${location.hostname}:${location.port || 8000}/ws/camera`;
+      const SEND_FPS = 15; // Frames per second sent to server
+      const MAX_INCIDENTS = 60;
+      const MAX_NARRATIVE = 200;
 
-  <!-- ── EVIDENCE ── -->
-  <div class="panel" id="evidence-panel">
-    <div class="panel-header">
-      <span class="panel-title">📦 Evidence Packages</span>
-      <span class="panel-title" id="pkg-count" style="color:var(--accent)">0</span>
-    </div>
-    <div class="evidence-list" id="evidence-list">
-      <div class="no-incidents" style="height:100%">
-        <span style="font-size:20px;opacity:.3">🗂</span>
-        No packages yet
-      </div>
-    </div>
-  </div>
+      // ── State ──────────────────────────────────────────────────────────
+      let incidents = [];
+      let narrativeEntries = [];
+      let packages = [];
+      let alertTimeout = null;
+      let totalAnomalies = 0;
+      let eventCount = 0;
 
-</main>
+      // ── DOM refs ───────────────────────────────────────────────────────
+      const connDot = document.getElementById("conn-dot");
+      const connLabel = document.getElementById("conn-label");
+      const alertBanner = document.getElementById("alert-banner");
+      const alertText = document.getElementById("alert-text");
 
-<footer>
-  <div class="status-item">SYSTEM <span id="sys-status">NOMINAL</span></div>
-  <div class="status-item">CAMERA <span>cam-main</span></div>
-  <div class="status-item">SDK <span>Stream Vision Agents v0.3.2</span></div>
-  <div class="status-item">LLM <span>Gemini Realtime</span></div>
-  <div class="status-item">TIME <span id="sys-time">--:--:--</span></div>
-</footer>
+      // ── Clock ──────────────────────────────────────────────────────────
+      setInterval(() => {
+        document.getElementById("sys-time").textContent =
+          new Date().toUTCString().slice(17, 25) + " UTC";
+      }, 1000);
 
-<script>
-// ── Config ─────────────────────────────────────────────────────────
-const API_BASE = `${location.protocol}//${location.hostname}:${location.port || 8000}`;
-const WS_URL   = `ws://${location.hostname}:${location.port || 8000}/ws/live`;
-const MAX_INCIDENTS = 60;
-const MAX_NARRATIVE = 200;
+      // ── WebSocket ──────────────────────────────────────────────────────
+      function connectWS() {
+        const ws = new WebSocket(WS_URL);
 
-// ── State ──────────────────────────────────────────────────────────
-let incidents = [];
-let narrativeEntries = [];
-let packages = [];
-let alertTimeout = null;
-let totalAnomalies = 0;
-let eventCount = 0;
+        ws.onopen = () => {
+          connDot.className = "conn-dot live";
+          connLabel.textContent = "LIVE";
+          document.getElementById("sys-status").textContent = "NOMINAL";
+        };
 
-// ── DOM refs ───────────────────────────────────────────────────────
-const connDot    = document.getElementById('conn-dot');
-const connLabel  = document.getElementById('conn-label');
-const alertBanner = document.getElementById('alert-banner');
-const alertText  = document.getElementById('alert-text');
+        ws.onclose = () => {
+          connDot.className = "conn-dot";
+          connLabel.textContent = "RECONNECTING";
+          setTimeout(connectWS, 2500);
+        };
 
-// ── Clock ──────────────────────────────────────────────────────────
-setInterval(() => {
-  document.getElementById('sys-time').textContent =
-    new Date().toUTCString().slice(17, 25) + ' UTC';
-}, 1000);
+        ws.onerror = () => ws.close();
 
-// ── WebSocket ──────────────────────────────────────────────────────
-function connectWS() {
-  const ws = new WebSocket(WS_URL);
+        ws.onmessage = ({ data }) => {
+          try {
+            handleEvent(JSON.parse(data));
+          } catch (e) {
+            console.warn("WS parse error", e);
+          }
+        };
+      }
 
-  ws.onopen = () => {
-    connDot.className   = 'conn-dot live';
-    connLabel.textContent = 'LIVE';
-    document.getElementById('sys-status').textContent = 'NOMINAL';
-  };
+      function handleEvent(ev) {
+        switch (ev.event_type) {
+          case "metrics":
+            handleMetrics(ev);
+            break;
+          case "anomaly":
+            handleAnomaly(ev);
+            break;
+          case "package_ready":
+            handlePackage(ev);
+            break;
+        }
+      }
 
-  ws.onclose = () => {
-    connDot.className   = 'conn-dot';
-    connLabel.textContent = 'RECONNECTING';
-    setTimeout(connectWS, 2500);
-  };
+      // ── Metrics ────────────────────────────────────────────────────────
+      function handleMetrics(ev) {
+        setMetric(
+          "m-fps",
+          ev.fps?.toFixed(1) ?? "—",
+          ev.fps < 3 ? "warn" : "good",
+        );
+        setMetric(
+          "m-lat",
+          ev.latency_ms ? ev.latency_ms.toFixed(0) + "ms" : "—",
+          ev.latency_ms > 100 ? "warn" : ev.latency_ms > 200 ? "alert" : "good",
+        );
+        setMetric("m-trk", ev.tracked_persons ?? 0);
+        setMetric("m-frm", (ev.frame_count ?? 0).toLocaleString());
+        setMetric("m-anm", ev.total_anomalies ?? totalAnomalies);
+        setMetric(
+          "m-inc",
+          ev.active_incidents ?? 0,
+          ev.active_incidents > 0 ? "alert" : "",
+        );
 
-  ws.onerror = () => ws.close();
+        document.getElementById("fps-label").textContent = ev.fps
+          ? `${ev.fps.toFixed(1)} FPS`
+          : "";
 
-  ws.onmessage = ({ data }) => {
-    try { handleEvent(JSON.parse(data)); }
-    catch(e) { console.warn('WS parse error', e); }
-  };
-}
+        totalAnomalies = ev.total_anomalies ?? totalAnomalies;
+      }
 
-function handleEvent(ev) {
-  switch (ev.event_type) {
-    case 'metrics':       handleMetrics(ev);  break;
-    case 'anomaly':       handleAnomaly(ev);  break;
-    case 'package_ready': handlePackage(ev);  break;
-  }
-}
+      function setMetric(id, val, cls = "") {
+        const el = document.getElementById(id);
+        el.textContent = val;
+        el.className = "metric-value " + cls;
+      }
 
-// ── Metrics ────────────────────────────────────────────────────────
-function handleMetrics(ev) {
-  setMetric('m-fps', ev.fps?.toFixed(1)  ?? '—', ev.fps < 3 ? 'warn' : 'good');
-  setMetric('m-lat', ev.latency_ms ? ev.latency_ms.toFixed(0) + 'ms' : '—',
-    ev.latency_ms > 100 ? 'warn' : ev.latency_ms > 200 ? 'alert' : 'good');
-  setMetric('m-trk', ev.tracked_persons ?? 0);
-  setMetric('m-frm', (ev.frame_count ?? 0).toLocaleString());
-  setMetric('m-anm', ev.total_anomalies ?? totalAnomalies);
-  setMetric('m-inc', ev.active_incidents ?? 0,
-    ev.active_incidents > 0 ? 'alert' : '');
+      // ── Anomaly ────────────────────────────────────────────────────────
+      function handleAnomaly(ev) {
+        eventCount++;
+        document.getElementById("incident-count").textContent =
+          `${eventCount} events`;
 
-  document.getElementById('fps-label').textContent =
-    ev.fps ? `${ev.fps.toFixed(1)} FPS` : '';
+        // Animate metrics
+        connDot.className = "conn-dot alert";
+        setTimeout(() => (connDot.className = "conn-dot live"), 2000);
 
-  totalAnomalies = ev.total_anomalies ?? totalAnomalies;
-}
+        // Alert banner
+        showAlert(
+          `${ev.anomaly_type.replace("_", " ").toUpperCase()} — ${ev.camera_id} — ${ev.timestamp}`,
+        );
 
-function setMetric(id, val, cls = '') {
-  const el = document.getElementById(id);
-  el.textContent = val;
-  el.className = 'metric-value ' + cls;
-}
-
-// ── Anomaly ────────────────────────────────────────────────────────
-function handleAnomaly(ev) {
-  eventCount++;
-  document.getElementById('incident-count').textContent = `${eventCount} events`;
-
-  // Animate metrics
-  connDot.className = 'conn-dot alert';
-  setTimeout(() => connDot.className = 'conn-dot live', 2000);
-
-  // Alert banner
-  showAlert(`${ev.anomaly_type.replace('_',' ').toUpperCase()} — ${ev.camera_id} — ${ev.timestamp}`);
-
-  // Add to incident list
-  const card = document.createElement('div');
-  card.className = `incident-card ${ev.anomaly_type}`;
-  card.innerHTML = `
-    <div class="incident-type">⚠ ${ev.anomaly_type.replace(/_/g,' ')}</div>
+        // Add to incident list
+        const card = document.createElement("div");
+        card.className = `incident-card ${ev.anomaly_type}`;
+        card.innerHTML = `
+    <div class="incident-type">⚠ ${ev.anomaly_type.replace(/_/g, " ")}</div>
     <div class="incident-desc">${ev.description}</div>
     <div class="incident-meta">
       <span class="incident-time">${ev.timestamp}</span>
       <span class="conf-badge conf-${ev.confidence}">${ev.confidence}</span>
     </div>`;
-  card.onclick = () => showNarrativeForIncident(ev.incident_id);
+        card.onclick = () => showNarrativeForIncident(ev.incident_id);
 
-  const list = document.getElementById('incident-list');
-  const noInc = list.querySelector('.no-incidents');
-  if (noInc) noInc.remove();
-  list.prepend(card);
-  if (list.children.length > MAX_INCIDENTS) list.lastChild.remove();
+        const list = document.getElementById("incident-list");
+        const noInc = list.querySelector(".no-incidents");
+        if (noInc) noInc.remove();
+        list.prepend(card);
+        if (list.children.length > MAX_INCIDENTS) list.lastChild.remove();
 
-  // Add narrative entry
-  if (ev.narrative_entry) {
-    addNarrativeEntry(ev.timestamp, ev.narrative_entry);
-  }
+        // Add narrative entry
+        if (ev.narrative_entry) {
+          addNarrativeEntry(ev.timestamp, ev.narrative_entry);
+        }
 
-  // Play audio alert (silent in demo)
-  flashBackground();
-}
+        // Play audio alert (silent in demo)
+        flashBackground();
+      }
 
-// ── Package ready ──────────────────────────────────────────────────
-function handlePackage(ev) {
-  document.getElementById('pkg-count').textContent =
-    parseInt(document.getElementById('pkg-count').textContent || '0') + 1;
+      // ── Package ready ──────────────────────────────────────────────────
+      function handlePackage(ev) {
+        document.getElementById("pkg-count").textContent =
+          parseInt(document.getElementById("pkg-count").textContent || "0") + 1;
 
-  const list = document.getElementById('evidence-list');
-  const noInc = list.querySelector('.no-incidents');
-  if (noInc) noInc.remove();
+        const list = document.getElementById("evidence-list");
+        const noInc = list.querySelector(".no-incidents");
+        if (noInc) noInc.remove();
 
-  const item = document.createElement('div');
-  item.className = 'evidence-item';
-  item.innerHTML = `
+        const item = document.createElement("div");
+        item.className = "evidence-item";
+        item.innerHTML = `
     <div>
       <div style="font-size:11px;color:var(--text);margin-bottom:2px">
-        Incident ${ev.incident_id.slice(0,8)}…
+        Incident ${ev.incident_id.slice(0, 8)}…
       </div>
-      <div class="evidence-id">${ev.package_id.slice(0,16)}…</div>
+      <div class="evidence-id">${ev.package_id.slice(0, 16)}…</div>
     </div>
     <span class="evidence-count">${ev.total_anomalies} events</span>
     <button class="btn-download"
       onclick="downloadReport('${ev.incident_id}')">↓ JSON</button>`;
-  list.prepend(item);
-  packages.unshift(ev);
-}
+        list.prepend(item);
+        packages.unshift(ev);
+      }
 
-// ── Helpers ────────────────────────────────────────────────────────
-function addNarrativeEntry(ts, text) {
-  narrativeEntries.push({ ts, text });
-  if (narrativeEntries.length > MAX_NARRATIVE) narrativeEntries.shift();
+      // ── Helpers ────────────────────────────────────────────────────────
+      function addNarrativeEntry(ts, text) {
+        narrativeEntries.push({ ts, text });
+        if (narrativeEntries.length > MAX_NARRATIVE) narrativeEntries.shift();
 
-  const scroll = document.getElementById('narrative-scroll');
-  const empty = scroll.querySelector('.narrative-empty');
-  if (empty) empty.remove();
+        const scroll = document.getElementById("narrative-scroll");
+        const empty = scroll.querySelector(".narrative-empty");
+        if (empty) empty.remove();
 
-  const entry = document.createElement('div');
-  entry.className = 'narrative-entry';
-  entry.innerHTML = `
+        const entry = document.createElement("div");
+        entry.className = "narrative-entry";
+        entry.innerHTML = `
     <span class="narrative-ts">${ts}</span>
     <span class="narrative-text">${text}</span>`;
-  scroll.appendChild(entry);
-  scroll.scrollTop = scroll.scrollHeight;
+        scroll.appendChild(entry);
+        scroll.scrollTop = scroll.scrollHeight;
 
-  document.getElementById('narrative-count').textContent =
-    `${narrativeEntries.length} entries`;
-}
+        document.getElementById("narrative-count").textContent =
+          `${narrativeEntries.length} entries`;
+      }
 
-async function showNarrativeForIncident(incidentId) {
-  try {
-    const r = await fetch(`${API_BASE}/api/v1/incidents/${incidentId}/narrative`);
-    if (!r.ok) return;
-    const data = await r.json();
-    const scroll = document.getElementById('narrative-scroll');
-    scroll.innerHTML = '';
-    data.entries.forEach(e => {
-      const entry = document.createElement('div');
-      entry.className = 'narrative-entry';
-      entry.innerHTML = `
-        <span class="narrative-ts">${e.timestamp.slice(11,19)} UTC</span>
+      async function showNarrativeForIncident(incidentId) {
+        try {
+          const r = await fetch(
+            `${API_BASE}/api/v1/incidents/${incidentId}/narrative`,
+          );
+          if (!r.ok) return;
+          const data = await r.json();
+          const scroll = document.getElementById("narrative-scroll");
+          scroll.innerHTML = "";
+          data.entries.forEach((e) => {
+            const entry = document.createElement("div");
+            entry.className = "narrative-entry";
+            entry.innerHTML = `
+        <span class="narrative-ts">${e.timestamp.slice(11, 19)} UTC</span>
         <span class="narrative-text">${e.text}</span>`;
-      scroll.appendChild(entry);
-    });
-    scroll.scrollTop = scroll.scrollHeight;
-  } catch(e) { console.warn('narrative fetch failed', e); }
-}
-
-function downloadReport(incidentId) {
-  window.open(`${API_BASE}/api/v1/packages/${incidentId}/report`, '_blank');
-}
-
-function showAlert(msg) {
-  alertText.textContent = msg;
-  alertBanner.classList.add('show');
-  clearTimeout(alertTimeout);
-  alertTimeout = setTimeout(() => alertBanner.classList.remove('show'), 5000);
-}
-
-function flashBackground() {
-  document.body.style.background = 'rgba(255,59,59,.04)';
-  setTimeout(() => document.body.style.background = '', 300);
-}
-
-// ── Init: poll API for initial state ──────────────────────────────
-async function loadInitialState() {
-  try {
-    const [incR, pkgR] = await Promise.all([
-      fetch(`${API_BASE}/api/v1/incidents`).catch(() => null),
-      fetch(`${API_BASE}/api/v1/packages`).catch(() => null),
-    ]);
-
-    if (incR?.ok) {
-      const data = await incR.json();
-      data.incidents?.forEach(inc => {
-        if (inc.narrative_preview) {
-          addNarrativeEntry(inc.created_at.slice(11,19) + ' UTC', inc.narrative_preview);
+            scroll.appendChild(entry);
+          });
+          scroll.scrollTop = scroll.scrollHeight;
+        } catch (e) {
+          console.warn("narrative fetch failed", e);
         }
-      });
-    }
+      }
 
-    if (pkgR?.ok) {
-      const data = await pkgR.json();
-      document.getElementById('pkg-count').textContent = data.total ?? 0;
-    }
-  } catch(e) { /* silent */ }
-}
+      function downloadReport(incidentId) {
+        window.open(
+          `${API_BASE}/api/v1/packages/${incidentId}/report`,
+          "_blank",
+        );
+      }
 
-// ── Boot ───────────────────────────────────────────────────────────
-loadInitialState();
-connectWS();
-</script>
-</body>
+      function showAlert(msg) {
+        alertText.textContent = msg;
+        alertBanner.classList.add("show");
+        clearTimeout(alertTimeout);
+        alertTimeout = setTimeout(
+          () => alertBanner.classList.remove("show"),
+          5000,
+        );
+      }
+
+      function flashBackground() {
+        document.body.style.background = "rgba(255,59,59,.04)";
+        setTimeout(() => (document.body.style.background = ""), 300);
+      }
+
+      // ── Init: poll API for initial state ──────────────────────────────
+      async function loadInitialState() {
+        try {
+          const [incR, pkgR] = await Promise.all([
+            fetch(`${API_BASE}/api/v1/incidents`).catch(() => null),
+            fetch(`${API_BASE}/api/v1/packages`).catch(() => null),
+          ]);
+
+          if (incR?.ok) {
+            const data = await incR.json();
+            data.incidents?.forEach((inc) => {
+              if (inc.narrative_preview) {
+                addNarrativeEntry(
+                  inc.created_at.slice(11, 19) + " UTC",
+                  inc.narrative_preview,
+                );
+              }
+            });
+          }
+
+          if (pkgR?.ok) {
+            const data = await pkgR.json();
+            document.getElementById("pkg-count").textContent = data.total ?? 0;
+          }
+        } catch (e) {
+          /* silent */
+        }
+      }
+
+      // ── Camera Streaming ──────────────────────────────────────────────
+      let camWS = null;
+      let camStream = null;
+      let camInterval = null;
+
+      async function startCamera() {
+        const btn = document.getElementById("btn-start-camera");
+        const placeholder = document.getElementById("feed-placeholder");
+        const video = document.getElementById("cam-video");
+        const canvas = document.getElementById("cam-canvas");
+        const ctx = canvas.getContext("2d");
+
+        // If already running, stop
+        if (camStream) {
+          stopCamera();
+          return;
+        }
+
+        btn.textContent = "⏳ CONNECTING...";
+
+        try {
+          camStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              width: { ideal: 640 },
+              height: { ideal: 480 },
+              facingMode: "user",
+            },
+            audio: false,
+          });
+
+          video.srcObject = camStream;
+          await video.play();
+
+          // Size canvas to video
+          canvas.width = video.videoWidth || 640;
+          canvas.height = video.videoHeight || 480;
+          canvas.style.display = "block";
+          placeholder.style.display = "none";
+
+          // Connect camera WebSocket
+          camWS = new WebSocket(CAM_WS_URL);
+
+          camWS.onopen = () => {
+            console.log("Camera WS connected");
+            btn.textContent = "⏹ STOP CAMERA";
+            btn.classList.add("recording");
+            // Move button to header area
+            btn.style.position = "absolute";
+            btn.style.top = "8px";
+            btn.style.right = "8px";
+            btn.style.zIndex = "10";
+            btn.style.padding = "6px 14px";
+            btn.style.fontSize = "10px";
+            document.getElementById("feed-container").appendChild(btn);
+
+            // Start sending frames
+            const sendCanvas = document.createElement("canvas");
+            sendCanvas.width = canvas.width;
+            sendCanvas.height = canvas.height;
+            const sendCtx = sendCanvas.getContext("2d");
+
+            camInterval = setInterval(() => {
+              if (!camWS || camWS.readyState !== WebSocket.OPEN) return;
+              // Draw current video frame
+              sendCtx.drawImage(
+                video,
+                0,
+                0,
+                sendCanvas.width,
+                sendCanvas.height,
+              );
+              const dataUrl = sendCanvas.toDataURL("image/jpeg", 0.7);
+              camWS.send(dataUrl);
+            }, 1000 / SEND_FPS);
+          };
+
+          camWS.onmessage = ({ data }) => {
+            // Received annotated frame from server
+            if (typeof data === "string" && data.startsWith("data:image/")) {
+              const img = new Image();
+              img.onload = () => {
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              };
+              img.src = data;
+            }
+          };
+
+          camWS.onclose = () => {
+            console.log("Camera WS closed");
+            stopCamera();
+          };
+
+          camWS.onerror = (e) => {
+            console.error("Camera WS error", e);
+            stopCamera();
+          };
+        } catch (err) {
+          console.error("Camera access denied:", err);
+          btn.textContent = "❌ CAMERA DENIED";
+          setTimeout(() => {
+            btn.textContent = "▶ START CAMERA";
+          }, 3000);
+        }
+      }
+
+      function stopCamera() {
+        if (camInterval) {
+          clearInterval(camInterval);
+          camInterval = null;
+        }
+        if (camWS) {
+          camWS.close();
+          camWS = null;
+        }
+        if (camStream) {
+          camStream.getTracks().forEach((t) => t.stop());
+          camStream = null;
+        }
+
+        const canvas = document.getElementById("cam-canvas");
+        const placeholder = document.getElementById("feed-placeholder");
+        const btn = document.getElementById("btn-start-camera");
+
+        canvas.style.display = "none";
+        placeholder.style.display = "";
+        btn.textContent = "▶ START CAMERA";
+        btn.classList.remove("recording");
+        btn.style = "";
+        placeholder.prepend(document.createElement("br"));
+        placeholder.querySelector(".feed-placeholder-icon")?.after(btn);
+      }
+
+      // ── Boot ───────────────────────────────────────────────────────────
+      loadInitialState();
+      connectWS();
+    </script>
+  </body>
 </html>

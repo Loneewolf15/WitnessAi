@@ -28,7 +28,6 @@ load_dotenv()
 
 # ── Vision Agents SDK ──────────────────────────────────────────────
 from vision_agents.core import Agent, AgentLauncher, User, Runner
-from vision_agents.core.tools import function_tool
 from vision_agents.plugins import getstream, gemini, deepgram, elevenlabs
 
 # ── Our backend ───────────────────────────────────────────────────
@@ -101,7 +100,6 @@ _witness_agent = build_witness_agent()
 # the LLM actually connected to our backend, not just talking at it.
 # ─────────────────────────────────────────────────────────────────
 
-@function_tool
 def get_agent_status() -> str:
     """
     Returns the current live status of WitnessAI:
@@ -121,8 +119,6 @@ def get_agent_status() -> str:
         "fps": status.fps,
     })
 
-
-@function_tool
 def get_incident_narrative(incident_id: str) -> str:
     """
     Returns the full AI-generated timestamped narrative for a specific incident.
@@ -149,8 +145,6 @@ def get_incident_narrative(incident_id: str) -> str:
         "full_narrative": narrative.full_text(),
     })
 
-
-@function_tool
 def package_incident_evidence(incident_id: str) -> str:
     """
     Manually triggers evidence packaging for an incident.
@@ -200,8 +194,6 @@ def package_incident_evidence(incident_id: str) -> str:
         "narrative_entries": len(narrative.entries) if narrative else 0,
     })
 
-
-@function_tool
 def list_evidence_packages() -> str:
     """
     Lists all saved evidence packages on disk.
@@ -214,8 +206,6 @@ def list_evidence_packages() -> str:
         "output_dir": EVIDENCE_OUTPUT_DIR,
     })
 
-
-@function_tool
 def get_scene_description() -> str:
     """
     Returns the current state of the scene:
@@ -259,6 +249,17 @@ async def create_agent(**kwargs) -> Agent:
         ws_manager=ws_manager,
     )
 
+
+    llm = gemini.Realtime(fps=5)
+    for tool in [
+        get_agent_status,
+        get_incident_narrative,
+        package_incident_evidence,
+        list_evidence_packages,
+        get_scene_description,
+    ]:
+        llm.register_function()(tool)
+
     agent = Agent(
         edge=getstream.Edge(),
         agent_user=User(
@@ -267,21 +268,13 @@ async def create_agent(**kwargs) -> Agent:
         ),
         instructions=_system_prompt(),
         # ── Real-time video at 5fps (was 1fps — that was embarrassing) ──
-        llm=gemini.Realtime(fps=5),
+        llm=llm,
         # ── Operator can SPEAK to the agent ──
         stt=deepgram.STT(),
         # ── Agent SPEAKS incident narrations aloud ──
         tts=elevenlabs.TTS(),
         # ── Our full detection + tracking + anomaly pipeline ──
         processors=[processor],
-        # ── SDK tool calling — Gemini can trigger backend actions ──
-        tools=[
-            get_agent_status,
-            get_incident_narrative,
-            package_incident_evidence,
-            list_evidence_packages,
-            get_scene_description,
-        ],
     )
 
     logger.info("Vision Agents SDK agent created — Gemini 5fps | Deepgram STT | ElevenLabs TTS | 5 tools")
@@ -367,19 +360,33 @@ if __name__ == "__main__":
   ║   👁  WitnessAI — Real-Time Crime Scene Intelligence    ║
   ║   Vision Possible: Agent Protocol Hackathon 2026        ║
   ╠══════════════════════════════════════════════════════════╣
-  ║  Gemini Realtime 5fps | Deepgram STT | ElevenLabs TTS  ║
-  ║  YOLOv8 Detection | IoU Tracking | 5 SDK Tools         ║
+  ║  YOLOv8 Detection | IoU Tracking | Browser Camera      ║
+  ║  Dashboard: http://localhost:{port}                      ║
   ╚══════════════════════════════════════════════════════════╝
-    """)
+    """.format(port=DASHBOARD_PORT))
 
-    # Run dashboard server + agent launcher concurrently
-    async def run_all():
-        await asyncio.gather(
-            start_dashboard_server(),
-            Runner(AgentLauncher(
-                create_agent=create_agent,
-                join_call=join_call,
-            )).run_async(),
-        )
+    use_sdk = "--sdk" in sys.argv
 
-    asyncio.run(run_all())
+    if use_sdk:
+        # Legacy: Use Vision Agents SDK with Stream WebRTC
+        import threading
+        def _run_dashboard():
+            asyncio.run(start_dashboard_server())
+
+        t = threading.Thread(target=_run_dashboard, daemon=True)
+        t.start()
+
+        Runner(AgentLauncher(
+            create_agent=create_agent,
+            join_call=join_call,
+        )).cli()
+    else:
+        # Default: Run FastAPI server with browser camera via WebSocket
+        import uvicorn
+        from api.main import create_app
+        app = create_app(witness_agent=_witness_agent)
+        logger.info(f"Dashboard + API: http://localhost:{DASHBOARD_PORT}")
+        logger.info(f"API docs:        http://localhost:{DASHBOARD_PORT}/docs")
+        logger.info("Open the dashboard in your browser and click START CAMERA")
+        uvicorn.run(app, host="0.0.0.0", port=DASHBOARD_PORT, log_level="info")
+

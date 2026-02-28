@@ -1,0 +1,42 @@
+# ── Python ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ── Virtual environments ──
+.venv/
+venv/
+env/
+
+# ── Environment secrets ──
+.env
+
+# ── IDE ──
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+
+# ── YOLOv8 weights (auto-downloaded on first run) ──
+*.pt
+
+# ── Cache ──
+.cache/
+.pytest_cache/
+.mypy_cache/
+
+# ── Evidence output (generated at runtime) ──
+evidence_packages/
+incidents/
+
+# ── Local-only scripts ──
+run_local.py
