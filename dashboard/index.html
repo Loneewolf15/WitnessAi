@@ -1191,8 +1191,11 @@
         }
 
         btn.textContent = "⏳ CONNECTING...";
+        console.log("[WitnessAI] Starting camera...");
+        console.log("[WitnessAI] CAM_WS_URL:", CAM_WS_URL);
 
         try {
+          console.log("[WitnessAI] Requesting camera access...");
           camStream = await navigator.mediaDevices.getUserMedia({
             video: {
               width: { ideal: 640 },
@@ -1201,9 +1204,11 @@
             },
             audio: false,
           });
+          console.log("[WitnessAI] ✅ Camera access granted, tracks:", camStream.getTracks().length);
 
           video.srcObject = camStream;
           await video.play();
+          console.log("[WitnessAI] ✅ Video playing, size:", video.videoWidth, "x", video.videoHeight);
 
           // Size canvas to video
           canvas.width = video.videoWidth || 640;
@@ -1212,10 +1217,11 @@
           placeholder.style.display = "none";
 
           // Connect camera WebSocket
+          console.log("[WitnessAI] Connecting WebSocket to:", CAM_WS_URL);
           camWS = new WebSocket(CAM_WS_URL);
 
           camWS.onopen = () => {
-            console.log("Camera WS connected");
+            console.log("[WitnessAI] ✅ Camera WS connected");
             btn.textContent = "⏹ STOP CAMERA";
             btn.classList.add("recording");
             // Move button to header area
@@ -1232,6 +1238,7 @@
             sendCanvas.width = canvas.width;
             sendCanvas.height = canvas.height;
             const sendCtx = sendCanvas.getContext("2d");
+            let framesSent = 0;
 
             camInterval = setInterval(() => {
               if (!camWS || camWS.readyState !== WebSocket.OPEN) return;
@@ -1245,6 +1252,10 @@
               );
               const dataUrl = sendCanvas.toDataURL("image/jpeg", 0.7);
               camWS.send(dataUrl);
+              framesSent++;
+              if (framesSent % 30 === 0) {
+                console.log("[WitnessAI] Frames sent:", framesSent, "| WS state:", camWS.readyState);
+              }
             }, 1000 / SEND_FPS);
           };
 
@@ -1259,17 +1270,18 @@
             }
           };
 
-          camWS.onclose = () => {
-            console.log("Camera WS closed");
+          camWS.onclose = (e) => {
+            console.warn("[WitnessAI] ❌ Camera WS closed | code:", e.code, "| reason:", e.reason || "(none)");
             stopCamera();
           };
 
           camWS.onerror = (e) => {
-            console.error("Camera WS error", e);
+            console.error("[WitnessAI] ❌ Camera WS error:", e);
+            console.error("[WitnessAI] WS URL was:", CAM_WS_URL);
             stopCamera();
           };
         } catch (err) {
-          console.error("Camera access denied:", err);
+          console.error("[WitnessAI] ❌ Camera access error:", err.name, err.message);
           btn.textContent = "❌ CAMERA DENIED";
           setTimeout(() => {
             btn.textContent = "▶ START CAMERA";
