@@ -80,8 +80,12 @@ async def websocket_camera(ws: WebSocket):
     await ws.accept()
     logger.info("Camera WS connected from dashboard.")
 
-    # Late imports to avoid circular dependency
-    from main import _witness_agent
+    # Get agent from app.state (set in api/main.py create_app)
+    _witness_agent = ws.app.state.witness_agent
+    if _witness_agent is None:
+        logger.error("WitnessAgent not initialized — closing camera WS")
+        await ws.close(code=1011, reason="Agent not ready")
+        return
     from integration.witness_processor import draw_detections, draw_hud
 
     # ── State ──

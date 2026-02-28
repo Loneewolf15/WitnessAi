@@ -39,6 +39,9 @@ def create_app(witness_agent=None) -> FastAPI:
         incidents.set_agent(witness_agent)
         agents.set_agent(witness_agent)
 
+    # Store on app.state so WebSocket handlers can access it
+    app.state.witness_agent = witness_agent
+
     app.include_router(health.router,    prefix="/api/v1", tags=["Health"])
     app.include_router(incidents.router, prefix="/api/v1", tags=["Incidents"])
     app.include_router(agents.router,    prefix="/api/v1", tags=["Agents"])
