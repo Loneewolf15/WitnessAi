@@ -26,10 +26,19 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 load_dotenv()
 
-# ── Vision Agents SDK ──────────────────────────────────────────────
-from vision_agents.core import Agent, AgentLauncher, User, Runner
-from vision_agents.core.tools import function_tool
-from vision_agents.plugins import getstream, gemini, deepgram, elevenlabs
+# ── Vision Agents SDK (only needed in --sdk mode) ─────────────────
+try:
+    from vision_agents.core import Agent, AgentLauncher, User, Runner
+    from vision_agents.core.tools import function_tool
+    from vision_agents.plugins import getstream, gemini, deepgram, elevenlabs
+    SDK_AVAILABLE = True
+except ImportError:
+    SDK_AVAILABLE = False
+
+    # Dummy decorator for when SDK is not installed (e.g., on Railway)
+    def function_tool(func):
+        return func
+
 
 # ── Our backend ───────────────────────────────────────────────────
 sys.path.insert(0, os.path.dirname(__file__))
@@ -382,12 +391,15 @@ if __name__ == "__main__":
             ws_mgr.start_relay(railway_ws)
             logger.info(f"Relaying live events → {railway_ws}")
 
-        await asyncio.gather(
-            start_dashboard_server(),
-            Runner(AgentLauncher(
-                create_agent=create_agent,
-                join_call=join_call,
-            )).run_async(),
-        )
+        tasks = [start_dashboard_server()]
+        if SDK_AVAILABLE:
+            tasks.append(
+                Runner(AgentLauncher(
+                    create_agent=create_agent,
+                    join_call=join_call,
+                )).run_async()
+            )
+        
+        await asyncio.gather(*tasks)
 
     asyncio.run(run_all())
