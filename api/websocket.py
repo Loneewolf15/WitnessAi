@@ -59,7 +59,7 @@ manager = ConnectionManager()
 
 @router.websocket("/live")
 async def websocket_live(ws: WebSocket):
-    """WebSocket endpoint consumed by the React dashboard."""
+    """WebSocket endpoint consumed by the dashboard."""
     await manager.connect(ws)
     try:
         while True:
@@ -72,23 +72,40 @@ async def websocket_live(ws: WebSocket):
 async def websocket_camera(ws: WebSocket):
     """WebSocket endpoint that receives live camera frames from the browser.
 
-    Uses frame-skipping: browser sends at high FPS, but the server only
-    processes the latest frame when it finishes the previous one.
-    In between, it echoes back the last annotated frame to keep the
-    video feed smooth on the frontend.
+    Two modes:
+    - MIRROR MODE: No local agent connected (Railway deploy). Echoes frames
+      straight back so the video feed is visible on screen.
+    - AGENT MODE: Local agent is running. Processes frames through YOLOv8,
+      annotates them, broadcasts anomalies to /ws/live dashboard.
     """
     await ws.accept()
     logger.info("Camera WS connected from dashboard.")
 
-    # Get agent from app.state (set in api/main.py create_app)
-    _witness_agent = ws.app.state.witness_agent
-    if _witness_agent is None:
-        logger.error("WitnessAgent not initialized — closing camera WS")
-        await ws.close(code=1011, reason="Agent not ready")
+    # ── Determine mode ────────────────────────────────────────────────────
+    try:
+        _witness_agent = ws.app.state.witness_agent
+    except AttributeError:
+        _witness_agent = None
+
+    AGENT_MODE = _witness_agent is not None
+
+    if not AGENT_MODE:
+        # ── MIRROR MODE — no agent, just echo frames back ─────────────────
+        logger.warning("WitnessAgent not available — running in mirror mode (raw echo)")
+        try:
+            while True:
+                data = await ws.receive_text()
+                if data.startswith("data:image/"):
+                    await ws.send_text(data)
+        except WebSocketDisconnect:
+            logger.info("Camera WS disconnected (mirror mode).")
+        except Exception as e:
+            logger.warning(f"Camera WS mirror error: {e}")
         return
+
+    # ── AGENT MODE — full YOLOv8 processing ──────────────────────────────
     from integration.witness_processor import draw_detections, draw_hud
 
-    # ── State ──
     processed_count = 0
     latencies: deque = deque(maxlen=30)
     fps_window: deque = deque(maxlen=30)
@@ -99,28 +116,26 @@ async def websocket_camera(ws: WebSocket):
 
     try:
         while True:
-            # ── 1. Receive frame (blocks until browser sends one) ──
+            # 1. Receive frame
             data = await ws.receive_text()
             if not data.startswith("data:image/"):
                 continue
 
-            # ── 2. If we have a cached annotated frame, send it immediately ──
-            #    This keeps the frontend feed alive even while we process.
+            # 2. Send cached annotated frame immediately to keep feed smooth
             if last_annotated_b64:
                 await ws.send_text(last_annotated_b64)
 
-            # ── 3. Drain any queued frames — keep only the LATEST ──
-            #    This is the key frame-skipping trick: discard stale frames.
+            # 3. Drain queued frames — keep only the latest
             import asyncio
             while True:
                 try:
                     newer = await asyncio.wait_for(ws.receive_text(), timeout=0.005)
                     if newer.startswith("data:image/"):
-                        data = newer  # overwrite with newer frame
+                        data = newer
                 except asyncio.TimeoutError:
-                    break  # no more queued frames
+                    break
 
-            # ── 4. Process this (latest) frame through YOLOv8 ──
+            # 4. Decode frame
             t_start = time.perf_counter()
             processed_count += 1
 
@@ -135,16 +150,15 @@ async def websocket_camera(ws: WebSocket):
             if img_bgr is None:
                 continue
 
-            # Run YOLO + tracker + anomaly detection
+            # 5. Run YOLO + tracker + anomaly detection
             anomalies = _witness_agent.process_frame(img_bgr)
 
             if anomalies:
                 active_anomaly_types = {a.anomaly_type.value for a in anomalies}
                 last_status = (
                     f"\U0001f534 INCIDENT  \u2014  "
-                    f"{', '.join(active_anomaly_types).replace('_',' ').upper()}"
+                    f"{', '.join(active_anomaly_types).replace('_', ' ').upper()}"
                 )
-                # Broadcast anomalies to /ws/live
                 for anomaly in anomalies:
                     incident_id = (
                         list(_witness_agent._active_incidents.keys())[-1]
@@ -169,7 +183,7 @@ async def websocket_camera(ws: WebSocket):
                 active_anomaly_types.clear()
                 last_status = "\U0001f7e2 NOMINAL  \u2014  WitnessAI monitoring"
 
-            # ── 5. Compute metrics ──
+            # 6. Compute metrics
             t_end = time.perf_counter()
             latency_ms = (t_end - t_start) * 1000
             latencies.append(latency_ms)
@@ -196,7 +210,7 @@ async def websocket_camera(ws: WebSocket):
                     "anomaly_types": list(active_anomaly_types),
                 })
 
-            # ── 6. Annotate and cache ──
+            # 7. Annotate frame and cache it
             tracked = [
                 t.to_detected_object()
                 for t in _witness_agent._tracker.active_tracks.values()
@@ -219,11 +233,9 @@ async def websocket_camera(ws: WebSocket):
                     f"data:image/jpeg;base64,"
                     f"{base64.b64encode(buf).decode('utf-8')}"
                 )
-
-                # Send the freshly annotated frame
                 await ws.send_text(last_annotated_b64)
 
     except WebSocketDisconnect:
-        logger.info("Camera WS disconnected.")
+        logger.info("Camera WS disconnected (agent mode).")
     except Exception as e:
         logger.error(f"Camera WS error: {e}", exc_info=True)
