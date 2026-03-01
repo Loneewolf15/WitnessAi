@@ -385,11 +385,6 @@ if __name__ == "__main__":
     railway_ws = os.getenv("RAILWAY_WS_URL", "")
 
     async def run_all():
-        # Start relay to Railway before serving
-        if railway_ws:
-            from api.websocket import manager as ws_mgr
-            ws_mgr.start_relay(railway_ws)
-            logger.info(f"Relaying live events → {railway_ws}")
 
         tasks = [start_dashboard_server()]
         if SDK_AVAILABLE:
