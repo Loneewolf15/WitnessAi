@@ -808,14 +808,7 @@
           >
         </div>
         <div class="feed-container" id="feed-container">
-          <video
-            id="cam-video"
-            autoplay
-            playsinline
-            muted
-            style="display: none"
-          ></video>
-          <canvas id="cam-canvas"></canvas>
+          <canvas id="cam-canvas" style="display: none;"></canvas>
           <div class="feed-placeholder" id="feed-placeholder">
             <span class="feed-placeholder-icon">📷</span>
             <button
@@ -823,10 +816,10 @@
               id="btn-start-camera"
               onclick="startCamera()"
             >
-              ▶ START CAMERA
+              ▶ CONNECT TO FEED
             </button>
             <br /><br />
-            <span class="feed-url">Click to activate your camera</span>
+            <span class="feed-url">Click to view the live camera feed</span>
             <br />
             <span class="feed-url"
               >Frames are processed by WitnessAI in real-time</span
@@ -1195,70 +1188,32 @@
 
       // ── Camera Streaming ──────────────────────────────────────────────
       let camWS = null;
-      let camStream = null;
-      let camInterval = null;
 
-      async function startCamera() {
+      function startCamera() {
         const btn = document.getElementById("btn-start-camera");
         const placeholder = document.getElementById("feed-placeholder");
-        const video = document.getElementById("cam-video");
         const canvas = document.getElementById("cam-canvas");
         const ctx = canvas.getContext("2d");
 
         // If already running, stop
-        if (camStream) {
+        if (camWS) {
           stopCamera();
           return;
         }
 
         btn.textContent = "⏳ CONNECTING...";
-        console.log("[WitnessAI] Starting camera...");
+        console.log("[WitnessAI] Connecting to feed...");
         console.log("[WitnessAI] CAM_WS_URL:", CAM_WS_URL);
 
         try {
-          // Check permission state first
-          console.log("[WitnessAI] Checking camera permission...");
-          try {
-            const permStatus = await navigator.permissions.query({ name: 'camera' });
-            console.log("[WitnessAI] Camera permission state:", permStatus.state);
-            if (permStatus.state === 'denied') {
-              throw new DOMException("Camera permission was previously denied", "NotAllowedError");
-            }
-          } catch (permErr) {
-            if (permErr.name === 'NotAllowedError') throw permErr;
-            // Some browsers don't support permissions.query for camera — proceed anyway
-            console.log("[WitnessAI] Permissions API not supported, proceeding with getUserMedia");
-          }
-
-          console.log("[WitnessAI] Requesting camera access...");
-          camStream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              width: { ideal: 640 },
-              height: { ideal: 480 },
-              facingMode: "user",
-            },
-            audio: false,
-          });
-          console.log("[WitnessAI] ✅ Camera access granted, tracks:", camStream.getTracks().length);
-
-          video.srcObject = camStream;
-          await video.play();
-          console.log("[WitnessAI] ✅ Video playing, size:", video.videoWidth, "x", video.videoHeight);
-
-          // Size canvas to video
-          canvas.width = video.videoWidth || 640;
-          canvas.height = video.videoHeight || 480;
-          canvas.style.display = "block";
-          placeholder.style.display = "none";
-
           // Connect camera WebSocket
-          console.log("[WitnessAI] Connecting WebSocket to:", CAM_WS_URL);
           camWS = new WebSocket(CAM_WS_URL);
 
           camWS.onopen = () => {
             console.log("[WitnessAI] ✅ Camera WS connected");
-            btn.textContent = "⏹ STOP CAMERA";
+            btn.textContent = "⏹ STOP FEED";
             btn.classList.add("recording");
+            
             // Move button to header area
             btn.style.position = "absolute";
             btn.style.top = "8px";
@@ -1268,30 +1223,8 @@
             btn.style.fontSize = "10px";
             document.getElementById("feed-container").appendChild(btn);
 
-            // Start sending frames
-            const sendCanvas = document.createElement("canvas");
-            sendCanvas.width = canvas.width;
-            sendCanvas.height = canvas.height;
-            const sendCtx = sendCanvas.getContext("2d");
-            let framesSent = 0;
-
-            camInterval = setInterval(() => {
-              if (!camWS || camWS.readyState !== WebSocket.OPEN) return;
-              // Draw current video frame
-              sendCtx.drawImage(
-                video,
-                0,
-                0,
-                sendCanvas.width,
-                sendCanvas.height,
-              );
-              const dataUrl = sendCanvas.toDataURL("image/jpeg", 0.7);
-              camWS.send(dataUrl);
-              framesSent++;
-              if (framesSent % 30 === 0) {
-                console.log("[WitnessAI] Frames sent:", framesSent, "| WS state:", camWS.readyState);
-              }
-            }, 1000 / SEND_FPS);
+            canvas.style.display = "block";
+            placeholder.style.display = "none";
           };
 
           camWS.onmessage = ({ data }) => {
@@ -1299,6 +1232,8 @@
             if (typeof data === "string" && data.startsWith("data:image/")) {
               const img = new Image();
               img.onload = () => {
+                canvas.width = img.width || 640;
+                canvas.height = img.height || 480;
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
               };
               img.src = data;
@@ -1316,43 +1251,15 @@
             stopCamera();
           };
         } catch (err) {
-          console.error("[WitnessAI] ❌ Camera access error:", err.name, err.message);
-          btn.textContent = "▶ START CAMERA";
-
-          // Show permission help overlay
-          const placeholder = document.getElementById("feed-placeholder");
-          placeholder.style.display = "flex";
-          placeholder.innerHTML = `
-            <div style="text-align:center; padding:20px;">
-              <div style="font-size:48px; margin-bottom:12px;">🔒</div>
-              <div style="color:var(--red); font-family:var(--mono); font-size:13px; font-weight:700; margin-bottom:12px; text-transform:uppercase; letter-spacing:0.08em;">
-                Camera Permission Required
-              </div>
-              <div style="color:var(--text-dim); font-family:var(--mono); font-size:11px; line-height:1.8; max-width:380px; margin:0 auto;">
-                1. Click the <strong style="color:var(--text);">🔒 lock icon</strong> in your address bar<br>
-                2. Set <strong style="color:var(--text);">Camera</strong> to <strong style="color:var(--green);">Allow</strong><br>
-                3. Refresh the page and click START CAMERA again
-              </div>
-              <button onclick="location.reload()" style="margin-top:16px; font-family:var(--mono); font-size:10px; padding:8px 20px; background:var(--accent); color:var(--bg); border:none; border-radius:4px; cursor:pointer; text-transform:uppercase; letter-spacing:0.06em;">
-                ↻ Refresh Page
-              </button>
-            </div>
-          `;
+          console.error("[WitnessAI] ❌ Connection error:", err.name, err.message);
+          btn.textContent = "▶ CONNECT TO FEED";
         }
       }
 
       function stopCamera() {
-        if (camInterval) {
-          clearInterval(camInterval);
-          camInterval = null;
-        }
         if (camWS) {
           camWS.close();
           camWS = null;
-        }
-        if (camStream) {
-          camStream.getTracks().forEach((t) => t.stop());
-          camStream = null;
         }
 
         const canvas = document.getElementById("cam-canvas");
@@ -1361,7 +1268,7 @@
 
         canvas.style.display = "none";
         placeholder.style.display = "";
-        btn.textContent = "▶ START CAMERA";
+        btn.textContent = "▶ CONNECT TO FEED";
         btn.classList.remove("recording");
         btn.style = "";
         placeholder.prepend(document.createElement("br"));
