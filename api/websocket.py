@@ -1,5 +1,6 @@
 """WitnessAI — WebSocket handler for real-time dashboard updates"""
 from __future__ import annotations
+import asyncio
 import base64
 import json
 import logging
@@ -8,6 +9,7 @@ import time
 from collections import deque
 
 import numpy as np
+import websockets
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 try:
@@ -24,6 +26,9 @@ router = APIRouter()
 class ConnectionManager:
     def __init__(self):
         self._connections: list[WebSocket] = []
+        self._relay_ws = None
+        self._relay_url = None
+        self._relay_task = None
 
     async def connect(self, ws: WebSocket) -> None:
         await ws.accept()
@@ -35,10 +40,20 @@ class ConnectionManager:
         logger.info(f"WS client disconnected. Total: {len(self._connections)}")
 
     async def broadcast_raw(self, data: dict) -> None:
-        """Broadcast raw dict as JSON to all connected clients."""
+        """Broadcast raw dict as JSON to all connected clients AND relay."""
+        text = json.dumps(data, default=str)
+        
+        # Relay to remote server if configured
+        if self._relay_ws is not None:
+            try:
+                await self._relay_ws.send(text)
+            except Exception as e:
+                logger.warning(f"Relay sending failed: {e}")
+                self._relay_ws = None  # Force reconnect
+
         if not self._connections:
             return
-        text = json.dumps(data, default=str)
+            
         dead = []
         for ws in self._connections:
             try:
@@ -47,6 +62,27 @@ class ConnectionManager:
                 dead.append(ws)
         for ws in dead:
             self.disconnect(ws)
+
+    def start_relay(self, url: str) -> None:
+        """Starts a background loop to securely pipe data to a remote WS server."""
+        self._relay_url = url
+        logger.info(f"Starting relay to {url}")
+        
+        async def _relay_loop():
+            while True:
+                try:
+                    async with websockets.connect(self._relay_url) as ws:
+                        logger.info(f"✅ Connected to relay: {self._relay_url}")
+                        self._relay_ws = ws
+                        # Keep connection alive while we broadcast to it
+                        while True:
+                            await ws.recv() 
+                except Exception as e:
+                    self._relay_ws = None
+                    logger.warning(f"Relay disconnected, retrying in 3s... ({e})")
+                    await asyncio.sleep(3)
+
+        self._relay_task = asyncio.create_task(_relay_loop())
 
     @property
     def connection_count(self) -> int:

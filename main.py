@@ -381,20 +381,46 @@ if __name__ == "__main__":
   ╚══════════════════════════════════════════════════════════╝
     """)
 
-    # ── Relay to Railway if configured ──────────────────────────
-    railway_ws = os.getenv("RAILWAY_WS_URL", "")
+    use_sdk = "join" in sys.argv or "--sdk" in sys.argv
 
-    async def run_all():
-
-        tasks = [start_dashboard_server()]
-        if SDK_AVAILABLE:
-            tasks.append(
-                Runner(AgentLauncher(
-                    create_agent=create_agent,
-                    join_call=join_call,
-                )).run_async()
-            )
+    if use_sdk and SDK_AVAILABLE:
+        # ── LOCAL MODE: Run the heavy AI agent and connect via WebRTC ──
+        logger.info("Starting in Agent SDK mode (handling 'join')")
         
-        await asyncio.gather(*tasks)
+        # Start the dashboard server in the background so local UI works too
+        import threading
+        def _run_dashboard():
+            asyncio.run(start_dashboard_server())
 
-    asyncio.run(run_all())
+        t = threading.Thread(target=_run_dashboard, daemon=True)
+        t.start()
+        
+        # Give the Stream SDK control over the command line arguments
+        # This is what actually parses 'python main.py join' and connects
+        # to the CALL_ID defined in your .env file!
+        Runner(AgentLauncher(
+            create_agent=create_agent,
+            join_call=join_call,
+        )).cli()
+
+    else:
+        # ── RAILWAY / SERVER MODE: Just run the web server and WebSockets ──
+        logger.info("Starting in Server mode (Dashboard + API only)")
+        import uvicorn
+        from api.main import create_app
+        app = create_app(witness_agent=_witness_agent)
+        
+        logger.info(f"Dashboard + API: http://0.0.0.0:{DASHBOARD_PORT}")
+        logger.info(f"API docs:        http://0.0.0.0:{DASHBOARD_PORT}/docs")
+        
+        # If railway_ws is set, start relaying to the central server
+        railway_ws = os.getenv("RAILWAY_WS_URL", "")
+        if railway_ws:
+            try:
+                from api.websocket import manager as ws_mgr
+                ws_mgr.start_relay(railway_ws)
+                logger.info(f"Relaying live events → {railway_ws}")
+            except AttributeError:
+                pass
+                
+        uvicorn.run(app, host="0.0.0.0", port=DASHBOARD_PORT, log_level="info")
