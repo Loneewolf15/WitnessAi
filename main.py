@@ -245,8 +245,9 @@ async def create_agent(**kwargs) -> Agent:
         ws_manager=ws_manager,
     )
 
-    # Register tools on the LLM instance — this is how your SDK version works
-    llm = gemini.Realtime(model="gemini-2.0-flash", fps=5)
+    # fps=0 disables video forwarding to Gemini — native-audio models don't support
+    # video frame input. WitnessProcessor + YOLO handle video analysis locally.
+    llm = gemini.Realtime(fps=0)
     for fn in [
         get_agent_status,
         get_incident_narrative,
@@ -264,38 +265,120 @@ async def create_agent(**kwargs) -> Agent:
         ),
         instructions=_system_prompt(),
         llm=llm,
+        stt=deepgram.STT(),
+        tts=elevenlabs.TTS(),
         processors=[processor],
         multi_speaker_filter=FirstSpeakerWinsFilter(model_dir=os.path.join(os.path.dirname(__file__), ".cache", "vad"))
     )
 
-    logger.info("Agent ready — Gemini 5fps | Deepgram STT | ElevenLabs TTS | 5 tools registered on LLM")
+    logger.info("Agent ready — Gemini native-audio | Deepgram STT | ElevenLabs TTS | YOLO vision | 5 tools registered")
     return agent
 
 
+# ─────────────────────────────────────────────────────────────────
+# Monkey-patch the SDK's open_demo to use VP8 at 720p
+# H264 at 12Mbps/1080p causes aiortc decode failures; VP8 is reliable.
+# ─────────────────────────────────────────────────────────────────
+from urllib.parse import urlencode
+import webbrowser
+
+_orig_open_demo = getstream.Edge.open_demo
+
+async def _patched_open_demo(self, call):
+    """Open demo with VP8 at 720p instead of H264 at 1080p."""
+    client = call.client.stream
+    human_id = "user-demo-agent"
+    name = "Human User"
+
+    await client.create_user(name=name, id=human_id)
+
+    # Ensure channel exists
+    from getstream.models import ChannelInput, ChannelMemberRequest
+    channel = client.chat.channel(self.channel_type, call.id)
+    await channel.get_or_create(
+        data=ChannelInput(
+            created_by_id=self.agent_user_id,
+            members=[ChannelMemberRequest(user_id=human_id)],
+        )
+    )
+
+    token = client.create_token(human_id, expiration=3600)
+    base_url = f"{os.getenv('EXAMPLE_BASE_URL', 'https://getstream.io/video/demos')}/join/"
+    params = {
+        "api_key": client.api_key,
+        "token": token,
+        "skip_lobby": "true",
+        "user_name": name,
+        "video_encoder": "vp8",      # VP8 decodes reliably in aiortc
+        "bitrate": 2000000,           # 2 Mbps — much less overhead
+        "w": 1280,
+        "h": 720,
+        "channel_type": self.channel_type,
+    }
+    url = f"{base_url}{call.id}?{urlencode(params)}"
+    logger.info(f"🌐 Opening browser to: {url}")
+    try:
+        await asyncio.to_thread(webbrowser.open, url)
+        logger.info("✅ Browser opened successfully!")
+    except Exception as e:
+        logger.warning(f"Please manually open: {url}")
+    return url
+
+getstream.Edge.open_demo = _patched_open_demo
+
+
+# ─────────────────────────────────────────────────────────────────
+# Join call with auto-retry for Gemini transient failures
+# ─────────────────────────────────────────────────────────────────
+MAX_RETRIES = 3
+
 async def join_call(agent: Agent, call_type: str, call_id: str, **kwargs) -> None:
     logger.info(f"Joining call: {call_type}/{call_id}")
-    call = await agent.create_call(call_type, call_id)
+    
+    # Retry loop for agent.create_call to handle ConnectTimeouts
+    call = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            call = await agent.create_call(call_type, call_id)
+            break
+        except Exception as e:
+            logger.warning(f"Error creating call (attempt {attempt}/{MAX_RETRIES}): {e}")
+            if attempt < MAX_RETRIES:
+                await asyncio.sleep(2 * attempt)
+            else:
+                raise
 
-    async with agent.join(call):
-        logger.info("WitnessAI is live in the call")
-        await agent.simple_response(
-            "WitnessAI is now active and monitoring. "
-            "I am watching the feed in real time for loitering, running, "
-            "crowd surges, and falls. "
-            "You can ask me what I see, request a scene description, "
-            "or say package the evidence at any time."
-        )
-        await agent.finish()
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            async with agent.join(call):
+                logger.info("WitnessAI is live in the call")
+                await agent.simple_response(
+                    "WitnessAI is now active and monitoring. "
+                    "I am watching the feed in real time for loitering, running, "
+                    "crowd surges, and falls. "
+                    "You can ask me what I see, request a scene description, "
+                    "or say package the evidence at any time."
+                )
+                await agent.finish()
+            break  # clean exit
+        except Exception as e:
+            err_msg = str(e)
+            if "1011" in err_msg or "unavailable" in err_msg.lower():
+                logger.warning(f"Gemini transient error (attempt {attempt}/{MAX_RETRIES}): {e}")
+                if attempt < MAX_RETRIES:
+                    await asyncio.sleep(2 * attempt)  # backoff
+                    continue
+            raise  # non-transient or out of retries
 
     _witness_agent.stop()
     logger.info("WitnessAI shut down cleanly")
 
 
 def _system_prompt() -> str:
-    return """You are WitnessAI — a real-time security intelligence agent with access to live video.
+    return """You are WitnessAI — a real-time security intelligence agent.
 
 CAPABILITIES:
-- You watch the live video feed at 5 frames per second via Gemini Realtime
+- YOLOv8 computer vision processes the live video feed locally for detections
 - You receive automatic alerts when behavioral anomalies are detected
 - You have 5 tools to query status, get narratives, and package evidence
 

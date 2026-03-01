@@ -63,6 +63,19 @@ class ConnectionManager:
         for ws in dead:
             self.disconnect(ws)
 
+    async def broadcast_frame(self, b64_jpeg: str) -> None:
+        """Broadcast an annotated frame (base64 JPEG data URI) to all dashboard clients."""
+        if not self._connections:
+            return
+        dead = []
+        for ws in self._connections:
+            try:
+                await ws.send_text(b64_jpeg)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.disconnect(ws)
+
     def start_relay(self, url: str) -> None:
         """Starts a background loop to securely pipe data to a remote WS server."""
         self._relay_url = url

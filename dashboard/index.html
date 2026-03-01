@@ -968,6 +968,23 @@
         ws.onerror = () => ws.close();
 
         ws.onmessage = ({ data }) => {
+          // Handle video frames from WitnessProcessor
+          if (typeof data === "string" && data.startsWith("data:image/")) {
+            const canvas = document.getElementById("cam-canvas");
+            const placeholder = document.getElementById("feed-placeholder");
+            const ctx = canvas.getContext("2d");
+            const img = new Image();
+            img.onload = () => {
+              canvas.width = img.width || 640;
+              canvas.height = img.height || 480;
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              canvas.style.display = "block";
+              if (placeholder) placeholder.style.display = "none";
+            };
+            img.src = data;
+            return;
+          }
+          // Handle JSON events (metrics, anomalies, etc.)
           try {
             handleEvent(JSON.parse(data));
           } catch (e) {

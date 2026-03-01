@@ -11,6 +11,7 @@ Frame flow per tick:
 """
 from __future__ import annotations
 
+import base64
 import logging
 import time
 from collections import deque
@@ -263,6 +264,12 @@ class WitnessProcessor(VideoProcessorPublisher):
             out_frame.pts = frame.pts
             out_frame.time_base = frame.time_base
             await self._video_track.add_frame(out_frame)
+
+        # ── Broadcast annotated frame to dashboard WebSocket ──
+        if CV2_AVAILABLE and self._ws_manager:
+            _, buf = cv2.imencode('.jpg', annotated, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            b64 = f"data:image/jpeg;base64,{base64.b64encode(buf).decode('utf-8')}"
+            await self._ws_manager.broadcast_frame(b64)
 
     async def _on_anomaly(self, anomaly) -> None:
         """Broadcast anomaly to dashboard + emit SDK event for LLM."""
