@@ -416,11 +416,13 @@ if __name__ == "__main__":
         # If railway_ws is set, start relaying to the central server
         railway_ws = os.getenv("RAILWAY_WS_URL", "")
         if railway_ws:
-            try:
-                from api.websocket import manager as ws_mgr
-                ws_mgr.start_relay(railway_ws)
-                logger.info(f"Relaying live events → {railway_ws}")
-            except AttributeError:
-                pass
+            @app.on_event("startup")
+            async def _start_relay():
+                try:
+                    from api.websocket import manager as ws_mgr
+                    ws_mgr.start_relay(railway_ws)
+                    logger.info(f"Relaying live events → {railway_ws}")
+                except AttributeError:
+                    pass
                 
         uvicorn.run(app, host="0.0.0.0", port=DASHBOARD_PORT, log_level="info")
