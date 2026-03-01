@@ -9,3 +9,8 @@ _DASHBOARD = os.path.join(os.path.dirname(__file__), "..", "..", "dashboard", "i
 @router.get("/")
 async def dashboard():
     return FileResponse(_DASHBOARD, media_type="text/html")
+
+@router.get("/talk")
+async def talk():
+    _TALK = os.path.join(os.path.dirname(__file__), "..", "..", "dashboard", "talk.html")
+    return FileResponse(_TALK, media_type="text/html")

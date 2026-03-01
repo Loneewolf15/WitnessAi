@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WitnessAI - Voice Interface</title>
+    <style>
+        :root {
+            --bg: #09090b;
+            --surface: #18181b;
+            --text: #f4f4f5;
+            --text-dim: #a1a1aa;
+            --accent: #3b82f6;
+            --border: #27272a;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            background: var(--bg);
+            color: var(--text);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 2rem;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            height: 48px;
+        }
+        .header h1 {
+            font-size: 1.2rem;
+            margin: 0;
+            font-weight: 600;
+        }
+        .header p {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin: 0;
+        }
+        .instruction {
+            padding: 10px 20px;
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 6px;
+            font-size: 0.85rem;
+            margin-right: 20px;
+        }
+        #call-frame {
+            width: 100%;
+            height: calc(100% - 81px); /* subtract header height */
+            border: none;
+        }
+        .back-link {
+            text-decoration: none;
+            color: var(--text-dim);
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .back-link:hover {
+            color: var(--text);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div style="display:flex; align-items:center; gap:24px;">
+            <a href="/" class="back-link">
+                <span>&larr;</span> Dashboard
+            </a>
+            <h1>🎙 WitnessAI Voice Interface</h1>
+            <div class="instruction">
+                <strong>STEP 1:</strong> Enter your Stream API Key &amp; Call ID (from .env) below. &nbsp;
+                <strong>STEP 2:</strong> Click Join Call and speak!
+            </div>
+        </div>
+        <div id="status">
+            <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#10b981; margin-right:6px;"></span>
+            <span style="font-size:12px; color:var(--text-dim);">Ready</span>
+        </div>
+    </div>
+    
+    <!-- Embed the official Stream UI allowing camera/microphone -->
+    <iframe id="call-frame" src="https://getstream.io/video/demos" allow="camera; microphone; display-capture"></iframe>
+
+</body>
+</html>
