@@ -26,9 +26,13 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 load_dotenv()
 
-# ── Vision Agents SDK ──────────────────────────────────────────────
-from vision_agents.core import Agent, AgentLauncher, User, Runner
-from vision_agents.plugins import getstream, gemini, deepgram, elevenlabs
+# ── Vision Agents SDK (only needed in --sdk mode) ─────────────────
+try:
+    from vision_agents.core import Agent, AgentLauncher, User, Runner
+    from vision_agents.plugins import getstream, gemini, deepgram, elevenlabs
+    SDK_AVAILABLE = True
+except ImportError:
+    SDK_AVAILABLE = False
 
 # ── Our backend ───────────────────────────────────────────────────
 sys.path.insert(0, os.path.dirname(__file__))
