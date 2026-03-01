@@ -390,7 +390,10 @@ if __name__ == "__main__":
         # Start the dashboard server in the background so local UI works too
         import threading
         def _run_dashboard():
-            asyncio.run(start_dashboard_server())
+            # Create a new event loop for this thread since uvicorn needs one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(start_dashboard_server())
 
         t = threading.Thread(target=_run_dashboard, daemon=True)
         t.start()
